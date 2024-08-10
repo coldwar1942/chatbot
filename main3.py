@@ -24,8 +24,12 @@ def job():
     cypher_query = '''
     MATCH (n:USER) return n.pushTime as time,n.userID as UID;
     '''
+    cypher_query2 = ''' 
+    MATCH (n:d1) return n.name as text;
+    '''
 
     Entity_corpus = []
+    Entity_corpus2 = []
     with driver.session() as session:
         results = session.run(cypher_query)
         for record in results:
@@ -33,9 +37,14 @@ def job():
             Entity_corpus.append((record['time'],record['UID']))
         #using set() to remove duplicated from list
         Entity_corpus = list(set(Entity_corpus))
+        results = session.run(cypher_query2)
+        for record in results:
+            Entity_corpus2.append((record['text']))
+            
 
-    for entity in Entity_corpus:
-        #print(f"Time: {entity[0]}, UID: {entity[1]}")
+
+    for entity in Entity_corpus2:
+       #print(f"Text1: {entity}")
 
         hour = entity[0][:2]
         uid = entity[1]
@@ -55,6 +64,8 @@ def run_flask_app():
     with flask_app.app.test_client() as client:
         response = client.get('/send_flex_message')
         print(response.data.decode())
+
+
 
 if __name__ == "__main__":
     
