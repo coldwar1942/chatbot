@@ -1,5 +1,5 @@
 from flask import Flask, request, abort
-
+from neo4j import GraphDatabase
 from linebot.v3 import (
     WebhookHandler
 )
@@ -28,6 +28,9 @@ from linebot.models import *
 
 app = Flask(__name__)
 
+uri = "neo4j:172.30.81.113:7687"
+user = "neo4j"
+password= "password"
 line_bot_api = LineBotApi('odz7P1Pu4YPBKfC2UaRJGzhP671gKFSR7DWrCKkBLCZaMUL4vRs62JDF9sfliaulr3C18QMazzHCXAZPBofFrBjs3schUsCWY9LoIbz0AH3PmGYb0COtKTDDwfqtlgJJ7W3mCN4YnYRwr41BTq6sKgdB04t89/1O/w1cDnyilFU=')
 configuration = Configuration(access_token='odz7P1Pu4YPBKfC2UaRJGzhP671gKFSR7DWrCKkBLCZaMUL4vRs62JDF9sfliaulr3C18QMazzHCXAZPBofFrBjs3schUsCWY9LoIbz0AH3PmGYb0COtKTDDwfqtlgJJ7W3mCN4YnYRwr41BTq6sKgdB04t89/1O/w1cDnyilFU=')
 handler = WebhookHandler('29e4dc7397d37e92d3a17cf5f459364b')
@@ -61,6 +64,38 @@ handler = WebhookHandler('29e4dc7397d37e92d3a17cf5f459364b')
               #  messages=[TextMessage(text=event.message.text)]
             #)
        # )
+class Neo4jConnection:
+    def __init__(self, uri, user, password):
+        self._driver = GraphDatabase.driver(uri, auth=(user, password))            
+                        
+    def close(self):
+        self._driver.close()
+
+    def check_property(self, label, property_name, variable_value):
+        with self._driver.session() as session:
+            result = session.read_transaction(self._check_property_query, label, property_name, variable_value)
+            return result
+
+    @staticmethod
+    def _check_property_query(tx, label, property_name, variable_value):
+        query = (
+                f"MATCH (n:{label}) "
+                f"WHERE n.{property_name} = $variable_value "
+            f"RETURN count(n) > 0 as exists"          
+        )
+        result = tx.run(query, variable_value=variable_value)
+        return result.single()["exists"]
+
+    def is_connected(self):
+        try:
+            with self._driver.session() as session:
+                result = session.run("RETURN 1")
+                if result.single()[0] == 1:
+                    return True
+        except Exception as e:
+            print(f"Connection failed: {e}")
+            return False
+
 
 def push_flex_message(to, alt_text, flex_content):
     flex_message = FlexSendMessage(
@@ -122,6 +157,7 @@ def linebot():
         #msg_reply = reply_msg(msg,user_id)
         #line_bot_api.reply_message(tk,TextSendMessage(text=msg_reply[0],quick_reply=msg_reply[1]))                             
         reply_msg(line_bot_api,tk,user_id,msg)
+
         print(msg, tk)
         print("user_id",user_id)
     except Exception as e:
@@ -133,8 +169,9 @@ def reply_msg(line_bot_api,tk,user_id,msg):
     #result = check_user_id(msg,user_id,line_bot_api,tk)
     #check_user_id(line_bot_api,tk,user_id,msg)
     #text_msg = result[0]
-    response = TextSendMessage(text=f"Hellom {msg}")
-    line_bot_api.reply_message(tk,response)
+    #response = TextSendMessage(text=f"Hellom {msg}")
+    #line_bot_api.reply_message(tk,response)
+    check_user_id(line_bot_api,tk,user_id,msg)
     #quick_reply_dic = result[1]
     #text_result2 = result[2]
    # if (result[2]==2):
@@ -145,9 +182,24 @@ def reply_msg(line_bot_api,tk,user_id,msg):
 
 
 def check_user_id(line_bot_api,tk,user_id,msg):
+    #if (msg == "Hello"):
+        #return_message(line_bot_api,tk,user_id,msg)
+    conn = Neo4jConnection(uri, user, password)
+    if conn.is_connected():
+        print("Connected to Neo4j successfully!")
+    else:
+        print("Failed to connect!")
+    node_label = "user"
+    property_name = "userID"
+    variable_value = user_id
     if (msg == "Hello"):
-        return_message(line_bot_api,tk,user_id,msg)
-
+        #check if the property userID exits
+        exists = conn.check_property(node_label, property_name, variable_value)
+        if exists:
+            print("User ID exit in neo4j")
+        else:
+            print("User ID doesn't exit in neo4j")
+      
 
 def return_message(line_bot_api,tk,user_id,msg):
     if(msg == "Hello"):

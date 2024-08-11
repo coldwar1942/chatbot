@@ -12,7 +12,7 @@ now1 = datetime.datetime.now(tz)
 time_compare = now1.strftime('%H')
 
 driver = GraphDatabase.driver(
-  "neo4j://172.30.81.223:7687",
+  "neo4j://172.30.81.113:7687",
   auth=basic_auth("neo4j", "password"))
 
 def job():
@@ -44,7 +44,7 @@ def job():
 
 
     for entity in Entity_corpus2:
-       #print(f"Text1: {entity}")
+        print(f"Text1: {entity}")
 
         hour = entity[0][:2]
         uid = entity[1]
