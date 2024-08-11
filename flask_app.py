@@ -1,5 +1,5 @@
 from flask import Flask, request, abort
-from neo4j import GraphDatabase
+from neo4j import GraphDatabase, basic_auth
 from linebot.v3 import (
     WebhookHandler
 )
@@ -23,7 +23,7 @@ from linebot import LineBotApi
 
 import json
 from flask import abort
-
+from linebot.models import TextSendMessage, QuickReply, QuickReplyButton, MessageAction
 from linebot.models import *
 
 app = Flask(__name__)
@@ -34,6 +34,12 @@ password= "password"
 line_bot_api = LineBotApi('odz7P1Pu4YPBKfC2UaRJGzhP671gKFSR7DWrCKkBLCZaMUL4vRs62JDF9sfliaulr3C18QMazzHCXAZPBofFrBjs3schUsCWY9LoIbz0AH3PmGYb0COtKTDDwfqtlgJJ7W3mCN4YnYRwr41BTq6sKgdB04t89/1O/w1cDnyilFU=')
 configuration = Configuration(access_token='odz7P1Pu4YPBKfC2UaRJGzhP671gKFSR7DWrCKkBLCZaMUL4vRs62JDF9sfliaulr3C18QMazzHCXAZPBofFrBjs3schUsCWY9LoIbz0AH3PmGYb0COtKTDDwfqtlgJJ7W3mCN4YnYRwr41BTq6sKgdB04t89/1O/w1cDnyilFU=')
 handler = WebhookHandler('29e4dc7397d37e92d3a17cf5f459364b')
+
+driver = GraphDatabase.driver(
+        "neo4j://172.30.81.113:7687",
+        auth=basic_auth("neo4j", "password"))
+
+
 
 #@app.route("/callback", methods=['POST'])
 #def callback():
@@ -197,16 +203,99 @@ def check_user_id(line_bot_api,tk,user_id,msg):
         exists = conn.check_property(node_label, property_name, variable_value)
         if exists:
             print("User ID exit in neo4j")
+            display_node(line_bot_api,tk,user_id,msg)
         else:
             print("User ID doesn't exit in neo4j")
-      
+    else:
+        display_node(line_bot_api,tk,user_id,msg)
 
 def return_message(line_bot_api,tk,user_id,msg):
     if(msg == "Hello"):
         flex = response_flex()
         line_bot_api.reply_message(tk,fkex)
 
+def display_node(line_bot_api,tk,user_id,msg):
 
+    conn = Neo4jConnection(uri, user, password)
+    query = '''
+        MATCH (n:user)
+        WHERE n.userID = $variable_value
+        RETURN n.nodeStep as property_value
+                '''   # query nodeStep from USER     
+
+    with driver.session() as session:
+        result = session.run(query, variable_value=user_id)
+        property_value = result.single().get("property_value")
+        temp = property_value
+        print(temp)
+    #node_label = "user"
+    #property_name = "nodeStep"
+    #property_name2 = 
+    #variable_value = 1
+    #exists = conn.check_property(node_label, property_name, variable_value)
+    #print(f"Text0: {property_value}")
+    if property_value != 99: # when user reply message
+        query_update = '''
+                MATCH (n:user)
+                WHERE n.userID = $userID
+                SET n.nodeStep = $temp
+                RETURN n
+                                                        ''' # update nodeStep to user
+        cypher_query = '''
+                MATCH (n:d1)
+                WHERE n.step = $variable_value
+                RETURN n
+                '''                         # query all node's properties from step variable
+        Entity_corpus = []
+        with driver.session() as session:
+            temp = temp + 1
+            print(temp)
+            result = session.write_transaction(lambda tx: tx.run(query_update, userID=user_id, temp=temp))
+            #result = session.run(query_update,userID=user_id,temp=temp+1)
+        with driver.session() as session:
+            #result = tx.run(query_update,userID =user_id, temp=temp+1)
+            results = session.run(cypher_query,variable_value=temp)
+            for record in results:
+                Entity_corpus.append(record['n']['name']) #Accessing the 'name' property of the node
+            Entity_corpus = list(set(Entity_corpus))
+            #result = tx.run(query_update,userID =user_id, temp=temp+1)
+
+            #for entity in Entity_corpus:
+        #print(Entity_corpus)
+        entity = Entity_corpus[0]
+        #temp = TextSendMessage(text=entity)
+        #line_bot_api.reply_message(tk,message)
+        body = request.get_data(as_text=True)
+        json_data = json.loads(body)
+        tk = json_data['events'][0]['replyToken']
+        cypher_query = '''
+            MATCH (a:d1)-[r:NEXT]->(b:d1)
+            WHERE a.step = $value1 AND b.step = $value2
+            RETURN r.name AS text
+        '''         # query relationship between start node to finish node     
+
+        with driver.session() as session:
+            result = session.run(cypher_query,value1=temp,value2=temp+1)
+            text = None
+            for record in result:
+                text = record['text']
+            
+        print(text)    
+        quick_reply_buttons = QuickReply(items=[
+            QuickReplyButton(action=MessageAction(label=text,text=text)),
+            QuickReplyButton(action=MessageAction(label="Option 2", text="You selected option 2")),
+            ])
+        #quick_reply = QuickReply(item=quick_reply_buttons)
+        message = TextSendMessage(
+            text=entity,
+            quick_reply=quick_reply_buttons
+                )
+        line_bot_api.reply_message(tk,message)
+        msg = json_data['events'][0]['message']['text']
+        
+        if msg:
+            print("msg=text")
+            print(msg)
 
 
 if __name__ == "__main__":
