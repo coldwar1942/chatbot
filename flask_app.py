@@ -247,6 +247,7 @@ def display_node(line_bot_api,tk,user_id,msg):
                 RETURN n
                 '''                         # query all node's properties from step variable
         Entity_corpus = []
+        Entity_corpus2 = []
         with driver.session() as session:
             temp = temp + 1
             print(temp)
@@ -257,45 +258,65 @@ def display_node(line_bot_api,tk,user_id,msg):
             results = session.run(cypher_query,variable_value=temp)
             for record in results:
                 Entity_corpus.append(record['n']['name']) #Accessing the 'name' property of the node
+                Entity_corpus2.append(record['n']['name2'])
             Entity_corpus = list(set(Entity_corpus))
+            Entity_corpus2 = list(set(Entity_corpus2))
             #result = tx.run(query_update,userID =user_id, temp=temp+1)
 
             #for entity in Entity_corpus:
         #print(Entity_corpus)
         entity = Entity_corpus[0]
-        #temp = TextSendMessage(text=entity)
-        #line_bot_api.reply_message(tk,message)
+        entity2 = Entity_corpus2[0]
+        message1 = TextSendMessage(text=entity)
+        message2 = TextSendMessage(text=entity2)
+        #line_bot_api.reply_message(tk,temp)
         body = request.get_data(as_text=True)
         json_data = json.loads(body)
         tk = json_data['events'][0]['replyToken']
         cypher_query = '''
             MATCH (a:d1)-[r:NEXT]->(b:d1)
             WHERE a.step = $value1 AND b.step = $value2
-            RETURN r.name AS text
+            RETURN r.choice AS choice,r.name AS name
         '''         # query relationship between start node to finish node     
 
         with driver.session() as session:
             result = session.run(cypher_query,value1=temp,value2=temp+1)
-            text = None
+            #choice = None
+            #name = None
+            choice = []
+            name = []
             for record in result:
-                text = record['text']
-            
-        print(text)    
-        quick_reply_buttons = QuickReply(items=[
-            QuickReplyButton(action=MessageAction(label=text,text=text)),
-            QuickReplyButton(action=MessageAction(label="Option 2", text="You selected option 2")),
-            ])
+                choice.append(record['choice'])
+                name.append(record['name'])
+
+        #print(text)    
+        if (choice[0] == "" or choice[0] == None ) and (name[0] == "" or name[0] == None):
+            message3 = TextSendMessage(text="")
+        else:
+            quick_reply_buttons = QuickReply(items=[
+                QuickReplyButton(action=MessageAction(label=choice[0],text=choice[0])),
+                QuickReplyButton(action=MessageAction(label=choice[1], text=choice[1])),
+                QuickReplyButton(action=MessageAction(label=choice[2], text=choice[2])),
+                QuickReplyButton(action=MessageAction(label=choice[3], text=choice[3])),
+                ])
         #quick_reply = QuickReply(item=quick_reply_buttons)
-        message = TextSendMessage(
-            text=entity,
-            quick_reply=quick_reply_buttons
+       #message = TextSendMessage(text=
+            message3 = TextSendMessage(
+                text=name[0],
+                quick_reply=quick_reply_buttons
                 )
-        line_bot_api.reply_message(tk,message)
+        isEmpty = TextSendMessage(text="")
+        if message2 == isEmpty and message3 == isEmpty: # missing 2,3 
+            line_bot_api.reply_message(tk,[message1])
+        elif message2 == isEmpty: # missing 2
+            line_bot_api.reply_message(tk,[message1,message3])
+        elif message3 == isEmpty: # missing 3
+            line_bot_api.reply_message(tk,[message1,message2])
+        else:
+            line_bot_api.reply_message(tk,[message1,message2,message3])
         msg = json_data['events'][0]['message']['text']
         
-        if msg:
-            print("msg=text")
-            print(msg)
+        
 
 
 if __name__ == "__main__":
