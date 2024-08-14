@@ -290,20 +290,24 @@ def display_node(line_bot_api,tk,user_id,msg):
                 name.append(record['name'])
 
         #print(text)    
-        if (choice[0] == "" or choice[0] == None ) and (name[0] == "" or name[0] == None):
+        if (not choice and not name) or (choice[0]=="" and name[0]==""):
             message3 = TextSendMessage(text="")
         else:
-            quick_reply_buttons = QuickReply(items=[
-                QuickReplyButton(action=MessageAction(label=choice[0],text=choice[0])),
-                QuickReplyButton(action=MessageAction(label=choice[1], text=choice[1])),
-                QuickReplyButton(action=MessageAction(label=choice[2], text=choice[2])),
-                QuickReplyButton(action=MessageAction(label=choice[3], text=choice[3])),
-                ])
+            quick_reply_buttons = []
+            for x in choice:
+                quick_reply_buttons.append(QuickReplyButton(action=MessageAction(label=x, text=x)))
+            quick_reply = QuickReply(items=quick_reply_buttons)
+            #quick_reply_buttons = QuickReply(items=[
+               # QuickReplyButton(action=MessageAction(label=choice[0],text=choice[0])),
+               # QuickReplyButton(action=MessageAction(label=choice[1], text=choice[1])),
+                #QuickReplyButton(action=MessageAction(label=choice[2], text=choice[2])),
+                #QuickReplyButton(action=MessageAction(label=choice[3], text=choice[3])),
+                #])
         #quick_reply = QuickReply(item=quick_reply_buttons)
        #message = TextSendMessage(text=
             message3 = TextSendMessage(
                 text=name[0],
-                quick_reply=quick_reply_buttons
+                quick_reply=quick_reply
                 )
         isEmpty = TextSendMessage(text="")
         if message2 == isEmpty and message3 == isEmpty: # missing 2,3 
