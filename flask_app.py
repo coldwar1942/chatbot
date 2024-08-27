@@ -248,6 +248,7 @@ def display_node(line_bot_api,tk,user_id,msg):
                 '''                         # query all node's properties from step variable
         Entity_corpus = []
         Entity_corpus2 = []
+        Entity_corpus3 = []
         with driver.session() as session:
             temp = temp + 1
             print(temp)
@@ -259,14 +260,19 @@ def display_node(line_bot_api,tk,user_id,msg):
             for record in results:
                 Entity_corpus.append(record['n']['name']) #Accessing the 'name' property of the node
                 Entity_corpus2.append(record['n']['name2'])
+                Entity_corpus3.append(record['n']['photo'])
             Entity_corpus = list(set(Entity_corpus))
             Entity_corpus2 = list(set(Entity_corpus2))
+            Entity_corpus3 = list(set(Entity_corpus3))
             #result = tx.run(query_update,userID =user_id, temp=temp+1)
 
             #for entity in Entity_corpus:
         #print(Entity_corpus)
         entity = Entity_corpus[0]
         entity2 = Entity_corpus2[0]
+        entity3 = Entity_corpus3[0]
+        print(entity3)
+        
         message1 = TextSendMessage(text=entity)
         message2 = TextSendMessage(text=entity2)
         #line_bot_api.reply_message(tk,temp)
@@ -297,6 +303,7 @@ def display_node(line_bot_api,tk,user_id,msg):
             for x in choice:
                 quick_reply_buttons.append(QuickReplyButton(action=MessageAction(label=x, text=x)))
             quick_reply = QuickReply(items=quick_reply_buttons)
+        
             #quick_reply_buttons = QuickReply(items=[
                # QuickReplyButton(action=MessageAction(label=choice[0],text=choice[0])),
                # QuickReplyButton(action=MessageAction(label=choice[1], text=choice[1])),
@@ -308,16 +315,39 @@ def display_node(line_bot_api,tk,user_id,msg):
             message3 = TextSendMessage(
                 text=name[0],
                 quick_reply=quick_reply
+        )
+        image_message = ImageSendMessage(
+                original_content_url=entity3,
+                preview_image_url=entity3
                 )
+        message4 = image_message
         isEmpty = TextSendMessage(text="")
-        if message2 == isEmpty and message3 == isEmpty: # missing 2,3 
-            line_bot_api.reply_message(tk,[message1])
-        elif message2 == isEmpty: # missing 2
-            line_bot_api.reply_message(tk,[message1,message3])
-        elif message3 == isEmpty: # missing 3
-            line_bot_api.reply_message(tk,[message1,message2])
-        else:
-            line_bot_api.reply_message(tk,[message1,message2,message3])
+        #if message2 == isEmpty and message3 == isEmpty: # missing 2,3 
+         #   line_bot_api.reply_message(tk,[message1])
+        #elif message2 == isEmpty: # missing 2
+         #   line_bot_api.reply_message(tk,[message1,message4,message3])
+        #elif message3 == isEmpty: # missing 3
+         #   line_bot_api.reply_message(tk,[message1,message2])
+        #else:
+         #   line_bot_api.reply_message(tk,[message1,message2,message3])
+        messages = [message1]
+        
+        if message2 != isEmpty:
+            messages.append(message2)
+
+
+        
+        if message4 != ImageSendMessage(
+                original_content_url="",
+                preview_image_url=""
+                ):
+            messages.append(message4)
+
+        if message3 != isEmpty:
+            messages.append(message3)
+
+        line_bot_api.reply_message(tk,messages)
+
         msg = json_data['events'][0]['message']['text']
         
         
