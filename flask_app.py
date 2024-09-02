@@ -230,6 +230,7 @@ def display_node(line_bot_api,tk,user_id,msg):
         dayStep = record.get("dayStep")
         node_label = f"d{dayStep}"
         temp = property_value
+        nodeStep = temp
         print(temp)
     #node_label = "user"
     #property_name = "nodeStep"
@@ -241,11 +242,11 @@ def display_node(line_bot_api,tk,user_id,msg):
         query_update = '''
                 MATCH (n:user)
                 WHERE n.userID = $userID
-                SET n.nodeStep = $temp AND n.dayStep = $temp2
+                SET n.nodeStep = $temp , n.dayStep = $temp2
                 RETURN n
                                                         ''' # update nodeStep to user
-        cypher_query = '''
-                MATCH (n:{$node_label})
+        cypher_query = f'''
+                MATCH (n:{node_label})
                 WHERE n.step = $variable_value
                 RETURN n
                 '''                         # query all node's properties from step variable
@@ -263,23 +264,34 @@ def display_node(line_bot_api,tk,user_id,msg):
             #result = session.run(query_update,userID=user_id,temp=temp+1)
         with driver.session() as session:
             #result = tx.run(query_update,userID =user_id, temp=temp+1)
-            results = session.run(cypher_query,node_label=node_label,variable_value=temp)
+            results = session.run(cypher_query,variable_value=temp)
             for record in results:
-                Entity_corpus.append(record['n']['name']) #Accessing the 'name' property of the node
-                Entity_corpus2.append(record['n']['name2'])
-                Entity_corpus3.append(record['n']['photo'])
-            isEnd = result.single().get("isEnd")
+                node = record['n']
+                #Entity_corpus.append(record['n']['name']) #Accessing the 'name' property of the node
+                #Entity_corpus2.append(record['n']['name2'])
+                #Entity_corpus3.append(record['n']['photo'])
+                if 'name' in node:
+                    Entity_corpus.append(node['name'])
+                if 'name2' in node:
+                    Entity_corpus2.append(node['name2'])
+                if 'photo' in node:
+                    Entity_corpus3.append(node['photo'])
+                if 'isEnd' in node:
+                    isEnd = node['isEnd']
+
+                #isEnd = result.single().get("isEnd")
             print(isEnd)
+            print("hello world")
             Entity_corpus = list(set(Entity_corpus))
             Entity_corpus2 = list(set(Entity_corpus2))
             Entity_corpus3 = list(set(Entity_corpus3))
             #result = tx.run(query_update,userID =user_id, temp=temp+1)
-            if not isEnd:
+            if isEnd is False:
                 temp = temp + 1
                 result = session.write_transaction(lambda tx: tx.run(query_update, userID=user_id, temp=temp
                                                                      , temp2 = dayStep))
-            else: # when end any day
-                temp = 0
+            elif isEnd is True: # when end any day
+                temp = 1
                 dayStep = dayStep + 1
                 node_label = f"d{dayStep}" 
                 # reset nodeStep to 0
@@ -298,14 +310,14 @@ def display_node(line_bot_api,tk,user_id,msg):
         body = request.get_data(as_text=True)
         json_data = json.loads(body)
         tk = json_data['events'][0]['replyToken']
-        cypher_query = '''
-            MATCH (a:d1)-[r:NEXT]->(b:d1)
+        cypher_query =f'''
+            MATCH (a:{node_label})-[r:NEXT]->(b:{node_label})
             WHERE a.step = $value1 AND b.step = $value2
             RETURN r.choice AS choice,r.name AS name
         '''         # query relationship between start node to finish node     
 
         with driver.session() as session:
-            result = session.run(cypher_query,value1=temp,value2=temp+1)
+            result = session.run(cypher_query,value1=nodeStep,value2=nodeStep+1)
             #choice = None
             #name = None
             choice = []
@@ -349,8 +361,10 @@ def display_node(line_bot_api,tk,user_id,msg):
          #   line_bot_api.reply_message(tk,[message1,message2])
         #else:
          #   line_bot_api.reply_message(tk,[message1,message2,message3])
-        messages = [message1]
-        
+        messages = []
+        if message1 != isEmpty:
+            messages.append(message1)
+
         if message2 != isEmpty:
             messages.append(message2)
 
@@ -369,8 +383,15 @@ def display_node(line_bot_api,tk,user_id,msg):
 
         msg = json_data['events'][0]['message']['text']
         
-        
-
+        #if isEnd == :
+          #  temp = temp + 1
+           # result = session.write_transaction(lambda tx: tx.run(query_update, userID=user_id, temp=temp, temp2 = dayStep))
+      #  else: # when end any day
+       #     temp = 0
+      #      dayStep = dayStep + 1
+       #     node_label = f"d{dayStep}"
+            # reset nodeStep to 0
+        #    result = session.write_transaction(lambda tx: tx.run(query_update, userID=user_id, temp=temp,temp2 = dayStep))
 
 if __name__ == "__main__":
     app.run(port=8080)
