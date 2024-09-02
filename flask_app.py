@@ -220,12 +220,15 @@ def display_node(line_bot_api,tk,user_id,msg):
     query = '''
         MATCH (n:user)
         WHERE n.userID = $variable_value
-        RETURN n.nodeStep as property_value
+        RETURN n.nodeStep as property_value , n.dayStep as dayStep
                 '''   # query nodeStep from USER     
 
     with driver.session() as session:
         result = session.run(query, variable_value=user_id)
-        property_value = result.single().get("property_value")
+        record = result.single()
+        property_value = record.get("property_value")
+        dayStep = record.get("dayStep")
+        node_label = f"d{dayStep}"
         temp = property_value
         print(temp)
     #node_label = "user"
@@ -238,34 +241,50 @@ def display_node(line_bot_api,tk,user_id,msg):
         query_update = '''
                 MATCH (n:user)
                 WHERE n.userID = $userID
-                SET n.nodeStep = $temp
+                SET n.nodeStep = $temp AND n.dayStep = $temp2
                 RETURN n
                                                         ''' # update nodeStep to user
         cypher_query = '''
-                MATCH (n:d1)
+                MATCH (n:{$node_label})
                 WHERE n.step = $variable_value
                 RETURN n
                 '''                         # query all node's properties from step variable
+       #for i in range(1, 22):
+       # node_label = f"d{dayStep}"
+
         Entity_corpus = []
         Entity_corpus2 = []
         Entity_corpus3 = []
-        with driver.session() as session:
-            temp = temp + 1
-            print(temp)
-            result = session.write_transaction(lambda tx: tx.run(query_update, userID=user_id, temp=temp))
+        isEnd = False
+        #with driver.session() as session:
+            #temp = temp + 1 # update nodeStep by 1
+            
+            #result = session.write_transaction(lambda tx: tx.run(query_update, userID=user_id, temp=temp))
             #result = session.run(query_update,userID=user_id,temp=temp+1)
         with driver.session() as session:
             #result = tx.run(query_update,userID =user_id, temp=temp+1)
-            results = session.run(cypher_query,variable_value=temp)
+            results = session.run(cypher_query,node_label=node_label,variable_value=temp)
             for record in results:
                 Entity_corpus.append(record['n']['name']) #Accessing the 'name' property of the node
                 Entity_corpus2.append(record['n']['name2'])
                 Entity_corpus3.append(record['n']['photo'])
+            isEnd = result.single().get("isEnd")
+            print(isEnd)
             Entity_corpus = list(set(Entity_corpus))
             Entity_corpus2 = list(set(Entity_corpus2))
             Entity_corpus3 = list(set(Entity_corpus3))
             #result = tx.run(query_update,userID =user_id, temp=temp+1)
-
+            if not isEnd:
+                temp = temp + 1
+                result = session.write_transaction(lambda tx: tx.run(query_update, userID=user_id, temp=temp
+                                                                     , temp2 = dayStep))
+            else: # when end any day
+                temp = 0
+                dayStep = dayStep + 1
+                node_label = f"d{dayStep}" 
+                # reset nodeStep to 0
+                result = session.write_transaction(lambda tx: tx.run(query_update, userID=user_id, temp=temp,
+                                                                     temp2 = dayStep))
             #for entity in Entity_corpus:
         #print(Entity_corpus)
         entity = Entity_corpus[0]
