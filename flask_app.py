@@ -316,7 +316,7 @@ def display_node(line_bot_api,tk,user_id,msg):
                     isEnd = node['isEnd']
                 #node_ids.append(record['id_n']) 
                 #isEnd = result.single().get("isEnd")
-            print(isEnd)
+            
             
             #print(f"node_id is {node_ids}")
             Entity_corpus = list(set(Entity_corpus))
