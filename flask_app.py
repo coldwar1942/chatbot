@@ -251,13 +251,14 @@ def display_node(line_bot_api,tk,user_id,msg):
         with driver.session() as session:
             result = session.run(cypher_query4,node_id=node_id,msg=msg)
             record = result.single()
-            node_id = record.get('node_id')
+            node_id2 = record.get('node_id')
+            node_id = node_id2
 
     if property_value != 99: # when user reply message
         query_update = '''
                 MATCH (n:user)
                 WHERE n.userID = $userID
-                SET n.nodeStep = $temp , n.dayStep = $temp2, n.nodeID = $nodeID
+                SET n.dayStep = $temp2, n.nodeID = $nodeID,n.nodeStep = $nodeStep
                 RETURN n
          ''' #STEP 4
         query_relationship = '''
@@ -277,6 +278,11 @@ def display_node(line_bot_api,tk,user_id,msg):
             MATCH (n:{node_label})
             WHERE n.step = $variable_value
             RETURN id(n) AS id_n ,n
+        '''
+        rs_query = '''
+            MATCH (n)-[r:NEXT]->(m)
+            WHERE id(n) = $node_id
+            RETURN m.step AS step , id(m) AS node_id
         '''
 
        # node_label = f"d{dayStep}"
@@ -349,8 +355,8 @@ def display_node(line_bot_api,tk,user_id,msg):
         
         cypher_query3 =f'''
             MATCH (a:{node_label})-[r:NEXT]->(b:{node_label})
-            WHERE a.step = $value1  AND b.step = $value2 AND id(a) = $nodeID  
-            RETURN b.isEnd AS isEnd ,r.choice AS choice,r.name AS name,id(b) AS node_id,id(r) AS rs_id
+            WHERE b.step = $nodeStep  AND id(a) = $nodeID  
+            RETURN b.isEnd AS isEnd ,r.choice AS choice,r.name AS name,id(b) AS node_id,id(r) AS rs_id,b.step AS nodeStep
             '''         # query relationship between start node to finish node     
                         # STEP 3
         cypher_query4 = f'''
@@ -379,12 +385,18 @@ def display_node(line_bot_api,tk,user_id,msg):
        # with driver.session() as session:
             
          #   result = session.write_transaction(lambda tx: tx.run(query_update, userID=user_id, temp=temp, temp2 = dayStep,nodeID=node_id))
-
+        with driver.session() as session:
+            result = session.run(rs_query,node_id=node_id)
+            nodes = []
+            for record in result:
+                node = record['step']
+                nodes.append(node)
+        node = nodes[0]
         with driver.session() as session:
             choice = []
             name = []
-        
-            result = session.run(cypher_query3,nodeID=node_id,value1=nodeStep,value2=nodeStep+1)
+             
+            result = session.run(cypher_query3,nodeStep=node,nodeID=node_id)
             for record in result:
                 choice.append(record['choice'])
                 name.append(record['name'])
@@ -404,7 +416,7 @@ def display_node(line_bot_api,tk,user_id,msg):
         #rs_id = rs_ids[0]
         #node_id = node_ids[0]
         with driver.session() as session:
-            result = session.write_transaction(lambda tx: tx.run(query_update, userID=user_id, temp=temp, temp2 = dayStep,nodeID=node_id))
+            result = session.write_transaction(lambda tx: tx.run(query_update, userID=user_id,temp2 = dayStep,nodeID=node_id,nodeStep = node))
 
         if (not choice and not name) or (choice[0]=="" and name[0]==""):
             message3 = TextSendMessage(text="")
