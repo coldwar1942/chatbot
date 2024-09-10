@@ -220,7 +220,7 @@ def display_node(line_bot_api,tk,user_id,msg):
     query = '''
         MATCH (n:user)
         WHERE n.userID = $variable_value
-        RETURN n.nodeStep as property_value , n.dayStep as dayStep, n.nodeID as nodeID
+        RETURN n.nodeStep as property_value , n.dayStep as dayStep, n.nodeID as nodeID,n.rs_id as rs_id
                 '''   # query nodeStep from USER     #STEP 1
 
     with driver.session() as session:
@@ -229,6 +229,7 @@ def display_node(line_bot_api,tk,user_id,msg):
         property_value = record.get("property_value")
         dayStep = record.get("dayStep")
         node_id = record.get("nodeID")
+        #rs_id = record.get("rs_id")
         node_label = f"d{dayStep}"
         temp = property_value
         nodeStep = temp
@@ -248,15 +249,15 @@ def display_node(line_bot_api,tk,user_id,msg):
          ''' #STEP 4
         query_relationship = '''
                 MATCH (a:{node_label})-[r:NEXT]->(b:{node_label})
-                WHERE a.step = $value1 AND b.step = $value2 AND r.choice = $msg
+                WHERE id(a) = node_id AND r.choice = $msg
                 RETURN id(r) as rs_id
         '''
         
         # update nodeStep to user
         cypher_query = f'''
-                MATCH (n:{node_label})
-                WHERE n.step = $variable_value AND id(n) = $nodeID
-                RETURN id(n) AS id_n ,n
+                MATCH (a:{node_label})-[r:NEXT]->(b:{node_label})
+                WHERE id(a) = $nodeID 
+                RETURN id(b) AS id_n ,a,b
                 '''                         # query all node's properties from step variable
         #STEP 2
         cypher_query5 = f'''
@@ -272,6 +273,7 @@ def display_node(line_bot_api,tk,user_id,msg):
         Entity_corpus3 = []
         isEnd = False
         node_ids = []
+        #rs_ids = []
         #with driver.session() as session:
             #temp = temp + 1 # update nodeStep by 1
             
@@ -281,7 +283,7 @@ def display_node(line_bot_api,tk,user_id,msg):
             #result = tx.run(query_update,userID =user_id, temp=temp+1)
             results = session.run(cypher_query,variable_value=temp,nodeID = node_id)
             for record in results:
-                node = record['n']
+                node = record['a']
                 #Entity_corpus.append(record['n']['name']) #Accessing the 'name' property of the node
                 #Entity_corpus2.append(record['n']['name2'])
                 #Entity_corpus3.append(record['n']['photo'])
@@ -293,10 +295,10 @@ def display_node(line_bot_api,tk,user_id,msg):
                     Entity_corpus3.append(node['photo'])
                 if 'isEnd' in node:
                     isEnd = node['isEnd']
-                #node_ids.append(record['id_n']) 
+                node_ids.append(record['id_n']) 
                 #isEnd = result.single().get("isEnd")
             print(isEnd)
-            print("hello world2222")
+            
             #print(f"node_id is {node_ids}")
             Entity_corpus = list(set(Entity_corpus))
             Entity_corpus2 = list(set(Entity_corpus2))
@@ -334,15 +336,16 @@ def display_node(line_bot_api,tk,user_id,msg):
         
         cypher_query3 =f'''
             MATCH (a:{node_label})-[r:NEXT]->(b:{node_label})
-            WHERE a.step = $value1  AND b.step = $value2 AND id(a) = $nodeID
-            RETURN b.isEnd AS isEnd ,r.choice AS choice,r.name AS name,id(b) AS node_id
+            WHERE a.step = $value1  AND b.step = $value2 AND id(a) = $nodeID  
+            RETURN b.isEnd AS isEnd ,r.choice AS choice,r.name AS name,id(b) AS node_id,id(r) AS rs_id
             '''         # query relationship between start node to finish node     
                         # STEP 3
         cypher_query4 = f'''
             MATCH (a:{node_label})-[r:NEXT]->(b:{node_label})
-            WHERE a.step = $value1 AND b.step = $value2 
-            RETURN id(r) AS rs_id ,r.choice AS choice,r.name AS name
-        '''
+            WHERE id(a) = node_id AND r.choice = $msg
+            RETURN id(b) AS node_id
+        '''# STEP 3.5
+        
 
         if isEnd is True:
             temp = 1
@@ -365,21 +368,25 @@ def display_node(line_bot_api,tk,user_id,msg):
          #   result = session.write_transaction(lambda tx: tx.run(query_update, userID=user_id, temp=temp, temp2 = dayStep,nodeID=node_id))
 
         with driver.session() as session:
-            
-            result = session.run(cypher_query3,nodeID=node_id,value1=nodeStep,value2=nodeStep+1)
-            
             choice = []
             name = []
+        
+            result = session.run(cypher_query3,nodeID=node_id,value1=nodeStep,value2=nodeStep+1)
             for record in result:
                 choice.append(record['choice'])
                 name.append(record['name'])
                 node_ids.append(record['node_id']) # node_id of next node 
+                rs_ids.append(record['rs_id'])
                 #node_ids.append(record['node_id'])
         #print(text)    
         #print(f"relationship id is {rs_id}")
         # update
-
-        node_id = node_ids[0]
+        with driver.session() as session:
+            result = session.run(cypher_query4,node_id=node_id,msg=msg)
+            record = result.single()
+            node_id = record.get('node_id')
+        #rs_id = rs_ids[0]
+        #node_id = node_ids[0]
         with driver.session() as session:
             result = session.write_transaction(lambda tx: tx.run(query_update, userID=user_id, temp=temp, temp2 = dayStep,nodeID=node_id))
 
