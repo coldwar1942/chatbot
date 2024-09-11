@@ -245,14 +245,33 @@ def display_node(line_bot_api,tk,user_id,msg):
         WHERE id(a) = $node_id AND r.choice = $msg
         RETURN id(b) AS node_id
     '''
-
+    cypher_query6 = f'''
+        MATCH (a:{node_label})-[r:NEXT]->(b:{node_label})
+        WHERE id(a) = $node_id 
+        RETURN id(b) AS node_id,r.name AS quickReply
+    '''
+    reply = True
     #print(f"Text0: {property_value}")
     if (msg != "Hello"):
+        #reply = None
         with driver.session() as session:
-            result = session.run(cypher_query4,node_id=node_id,msg=msg)
+            result = session.run(cypher_query6,node_id=node_id)
             record = result.single()
-            node_id2 = record.get('node_id')
-            node_id = node_id2
+            if record:
+                reply = record.get('quickReply')
+                node_id = record.get('node_id')
+            else:
+                reply = None
+        
+        if reply == True:
+            with driver.session() as session:
+                result = session.run(cypher_query4,node_id=node_id,msg=msg)
+                record = result.single()
+                if record:    
+                    node_id2 = record.get('node_id')
+                    node_id = node_id2
+            
+
 
     if property_value != 99: # when user reply message
         query_update = '''
@@ -385,21 +404,28 @@ def display_node(line_bot_api,tk,user_id,msg):
        # with driver.session() as session:
             
          #   result = session.write_transaction(lambda tx: tx.run(query_update, userID=user_id, temp=temp, temp2 = dayStep,nodeID=node_id))
-        with driver.session() as session:
-            result = session.run(rs_query,node_id=node_id)
-            nodes = []
-            for record in result:
-                node = record['step']
-                nodes.append(node)
-        node = nodes[0]
-        with driver.session() as session:
-            choice = []
-            name = []
-             
-            result = session.run(cypher_query3,nodeStep=node,nodeID=node_id)
-            for record in result:
-                choice.append(record['choice'])
-                name.append(record['name'])
+        if isEnd is False:
+            with driver.session() as session:
+                result = session.run(rs_query,node_id=node_id)
+                nodes = []
+                for record in result:
+                    node = record['step']
+                    nodes.append(node)
+                node = nodes[0]
+        choice = []
+        name = []
+        #if reply == False:
+        if isEnd is False:
+            with driver.session() as session:
+                choice = []
+                name = []
+                print(f"current nodeStep is {node}")
+                print(f"current nodeID is {node_id}")  
+                result = session.run(cypher_query3,nodeStep=node,nodeID=node_id)
+                for record in result:
+                    choice.append(record['choice'])
+                    name.append(record['name'])
+                
                # node_ids.append(record['node_id']) # node_id of next node 
                 #rs_ids.append(record['rs_id'])
                 #node_ids.append(record['node_id'])
@@ -417,14 +443,14 @@ def display_node(line_bot_api,tk,user_id,msg):
         #node_id = node_ids[0]
         with driver.session() as session:
             result = session.write_transaction(lambda tx: tx.run(query_update, userID=user_id,temp2 = dayStep,nodeID=node_id,nodeStep = node))
-
-        if (not choice and not name) or (choice[0]=="" and name[0]==""):
-            message3 = TextSendMessage(text="")
-        else:
-            quick_reply_buttons = []
-            for x in choice:
-                quick_reply_buttons.append(QuickReplyButton(action=MessageAction(label=x, text=x)))
-            quick_reply = QuickReply(items=quick_reply_buttons)
+        message3 = TextSendMessage(text="") 
+        #if (not choice and not name):
+         #   message3 = TextSendMessage(text="")
+        #else:
+        quick_reply_buttons = []
+        for x in choice:
+            quick_reply_buttons.append(QuickReplyButton(action=MessageAction(label=x, text=x)))
+        quick_reply = QuickReply(items=quick_reply_buttons)
         
             #quick_reply_buttons = QuickReply(items=[
                # QuickReplyButton(action=MessageAction(label=choice[0],text=choice[0])),
@@ -434,6 +460,11 @@ def display_node(line_bot_api,tk,user_id,msg):
                 #])
         #quick_reply = QuickReply(item=quick_reply_buttons)
        #message = TextSendMessage(text=
+        #demo = name[0]
+        #print(f"QucikReplyName is {demo}")
+        
+        message3 = TextSendMessage(text="")
+        if (len(choice)>0 and choice[0] != "" ) or (choice and name):
             message3 = TextSendMessage(
                 text=name[0],
                 quick_reply=quick_reply
@@ -471,9 +502,10 @@ def display_node(line_bot_api,tk,user_id,msg):
             messages.append(message3)
 #        with driver.session() as session:
  #           result = session.write_transaction(lambda tx: tx.run(query_update, userID=user_id, temp=temp, temp2 = dayStep,nodeID=node_id))
-        
-        line_bot_api.reply_message(tk,messages)
-
+        if messages: 
+            line_bot_api.reply_message(tk,messages)
+        else:
+            print("No valid messages to send.")
         msg = json_data['events'][0]['message']['text']
         
     
