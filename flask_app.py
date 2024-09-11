@@ -245,6 +245,7 @@ def display_node(line_bot_api,tk,user_id,msg):
         WHERE id(a) = $node_id AND r.choice = $msg
         RETURN id(b) AS node_id
     '''
+    
     cypher_query6 = f'''
         MATCH (a:{node_label})-[r:NEXT]->(b:{node_label})
         WHERE id(a) = $node_id 
@@ -270,7 +271,7 @@ def display_node(line_bot_api,tk,user_id,msg):
                 if record:    
                     node_id2 = record.get('node_id')
                     node_id = node_id2
-            
+    print(f"start node id = {node_id}")        
 
 
     if property_value != 99: # when user reply message
@@ -280,10 +281,10 @@ def display_node(line_bot_api,tk,user_id,msg):
                 SET n.dayStep = $temp2, n.nodeID = $nodeID,n.nodeStep = $nodeStep
                 RETURN n
          ''' #STEP 4
-        query_relationship = '''
-                MATCH (a:{node_label})-[r:NEXT]->(b:{node_label})
-                WHERE id(a) = node_id AND r.choice = $msg
-                RETURN id(r) as rs_id
+        query_norelationship = f'''
+                MATCH (n:{node_label})
+                WHERE id(n) = $node_id
+                RETURN n
         '''
         
         # update nodeStep to user
@@ -298,7 +299,7 @@ def display_node(line_bot_api,tk,user_id,msg):
             WHERE n.step = $variable_value
             RETURN id(n) AS id_n ,n
         '''
-        rs_query = '''
+        rs_query = f'''
             MATCH (n)-[r:NEXT]->(m)
             WHERE id(n) = $node_id
             RETURN m.step AS step , id(m) AS node_id
@@ -317,22 +318,44 @@ def display_node(line_bot_api,tk,user_id,msg):
             
             #result = session.write_transaction(lambda tx: tx.run(query_update, userID=user_id, temp=temp))
             #result = session.run(query_update,userID=user_id,temp=temp+1)
-        with driver.session() as session:
+        if isEnd is False:
+            with driver.session() as session:
+                isFound = False
             #result = tx.run(query_update,userID =user_id, temp=temp+1)
-            results = session.run(cypher_query,nodeID = node_id)
-            for record in results:
-                node = record['a']
+                results = session.run(cypher_query,nodeID = node_id)
+                for record in results:
+                    isFound = True
+                    node = record['a']
+                    node2 = record['b']
                 #Entity_corpus.append(record['n']['name']) #Accessing the 'name' property of the node
                 #Entity_corpus2.append(record['n']['name2'])
                 #Entity_corpus3.append(record['n']['photo'])
-                if 'name' in node:
-                    Entity_corpus.append(node['name'])
-                if 'name2' in node:
-                    Entity_corpus2.append(node['name2'])
-                if 'photo' in node:
-                    Entity_corpus3.append(node['photo'])
-                if 'isEnd' in node:
-                    isEnd = node['isEnd']
+                    if 'name' in node:
+                        Entity_corpus.append(node['name'])
+                    if 'name2' in node:
+                        Entity_corpus2.append(node['name2'])
+                    if 'photo' in node:
+                        Entity_corpus3.append(node['photo'])
+                   # if 'isEnd' in node2:
+                    #    isEnd = node2['isEnd']
+        print(f"isFound boolean value = {isFound}")
+        if isFound is False:
+            with driver.session() as session:
+                Entity_corpus = []
+                Entity_corpus2 = []
+                Entity_corpus3 = []
+                results = session.run(query_norelationship,node_id=node_id)
+                for record in results:
+                    node = record['n']
+                    if 'name' in node:
+                        Entity_corpus.append(node['name'])
+                    if 'name2' in node:
+                        Entity_corpus2.append(node['name2'])
+                    if 'photo' in node:
+                        Entity_corpus3.append(node['photo'])
+                    if 'isEnd' in node:
+                        isEnd = node['isEnd']
+
                 #node_ids.append(record['id_n']) 
                 #isEnd = result.single().get("isEnd")
             
@@ -360,13 +383,19 @@ def display_node(line_bot_api,tk,user_id,msg):
                                                                      temp2 = dayStep))
            ''' #for entity in Entity_corpus:
         #print(Entity_corpus)
-        entity = Entity_corpus[0]
-        entity2 = Entity_corpus2[0]
-        entity3 = Entity_corpus3[0]
+        entity = Entity_corpus[0] if Entity_corpus else None
+        entity2 = Entity_corpus2[0] if Entity_corpus2 else None
+        entity3 = Entity_corpus3[0] if Entity_corpus3 else None
         print(entity3)
         #node_id = node_ids[0]
-        message1 = TextSendMessage(text=entity)
-        message2 = TextSendMessage(text=entity2)
+        if entity and entity.strip():
+            message1 = TextSendMessage(text=entity)
+        else:
+            message1 = TextSendMessage(text="")
+        if entity2 and entity2.strip():
+            message2 = TextSendMessage(text=entity2)
+        else:
+            message2 = TextSendMessage(text="") 
         #line_bot_api.reply_message(tk,temp)
         body = request.get_data(as_text=True)
         json_data = json.loads(body)
@@ -385,7 +414,7 @@ def display_node(line_bot_api,tk,user_id,msg):
         '''# STEP 3.5
         
 
-        if isEnd is True:
+        if isFound is False:
             temp = 1
             dayStep = dayStep + 1
             node_label = f"d{dayStep}"
@@ -395,37 +424,51 @@ def display_node(line_bot_api,tk,user_id,msg):
                 for record in results:
                     node_ids.append(record['node_id'])
                 node_ids = list(set(node_ids))
-                
-                node_id = node_ids[0]
-            #result = session.write_transaction(lambda tx: tx.run(query_update, userID=user_id, temp=temp, temp2 = dayStep,nodeID=node_id))
-        if isEnd is False:
-            temp = temp + 1
+                if node_ids:
+                    node_id = node_ids[0]
+            #result = session.write_transaction(lambda tx: tx.run(query_update, userID=user_id, temp=temp, temp2 = dayStep,nodeID=node_id#))
+       # if isEnd is False:
+          #  temp = temp + 1
 
        # with driver.session() as session:
             
          #   result = session.write_transaction(lambda tx: tx.run(query_update, userID=user_id, temp=temp, temp2 = dayStep,nodeID=node_id))
-        if isEnd is False:
+        if isFound is True:
             with driver.session() as session:
                 result = session.run(rs_query,node_id=node_id)
                 nodes = []
                 for record in result:
                     node = record['step']
                     nodes.append(node)
-                node = nodes[0]
+                if nodes:
+                    node = nodes[0]
+                else:
+                    node = 0
         choice = []
         name = []
         #if reply == False:
-        if isEnd is False:
+        if isFound is True:
             with driver.session() as session:
                 choice = []
                 name = []
                 print(f"current nodeStep is {node}")
                 print(f"current nodeID is {node_id}")  
                 result = session.run(cypher_query3,nodeStep=node,nodeID=node_id)
+                records_found = False
                 for record in result:
-                    choice.append(record['choice'])
-                    name.append(record['name'])
-                
+                    records_found = True
+                    records_found = True
+                    choice_value = record['choice'].strip() if record['choice'] else ""
+                    #choice.append(record['choice'])
+                    name_value = record['name'].strip() if record['name'] else ""
+                    if choice_value:
+                        choice.append(choice_value)
+                    if name_value:
+                        name.append(name_value)
+
+                if not records_found:
+                    choice = None
+                    name = None
                # node_ids.append(record['node_id']) # node_id of next node 
                 #rs_ids.append(record['rs_id'])
                 #node_ids.append(record['node_id'])
@@ -448,9 +491,10 @@ def display_node(line_bot_api,tk,user_id,msg):
          #   message3 = TextSendMessage(text="")
         #else:
         quick_reply_buttons = []
-        for x in choice:
-            quick_reply_buttons.append(QuickReplyButton(action=MessageAction(label=x, text=x)))
-        quick_reply = QuickReply(items=quick_reply_buttons)
+        if choice:
+            for x in choice:
+                quick_reply_buttons.append(QuickReplyButton(action=MessageAction(label=x, text=x)))
+            quick_reply = QuickReply(items=quick_reply_buttons)
         
             #quick_reply_buttons = QuickReply(items=[
                # QuickReplyButton(action=MessageAction(label=choice[0],text=choice[0])),
@@ -464,16 +508,19 @@ def display_node(line_bot_api,tk,user_id,msg):
         #print(f"QucikReplyName is {demo}")
         
         message3 = TextSendMessage(text="")
-        if (len(choice)>0 and choice[0] != "" ) or (choice and name):
+        if choice is not None and name is not None and len(choice)>0:
             message3 = TextSendMessage(
                 text=name[0],
                 quick_reply=quick_reply
         )
-        image_message = ImageSendMessage(
+        if entity3:
+            image_message = ImageSendMessage(
                 original_content_url=entity3,
                 preview_image_url=entity3
                 )
-        message4 = image_message
+            message4 = image_message
+        else:
+            message4 = TextSendMessage(text="")
         isEmpty = TextSendMessage(text="")
         #if message2 == isEmpty and message3 == isEmpty: # missing 2,3 
          #   line_bot_api.reply_message(tk,[message1])
@@ -492,10 +539,11 @@ def display_node(line_bot_api,tk,user_id,msg):
 
 
         
-        if message4 != ImageSendMessage(
-                original_content_url="",
-                preview_image_url=""
-                ):
+        #if message4 != ImageSendMessage(
+         #       original_content_url="",
+        #        preview_image_url=""
+         #       ):
+        if message4 != isEmpty:
             messages.append(message4)
 
         if message3 != isEmpty:
