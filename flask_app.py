@@ -257,6 +257,7 @@ def display_node(line_bot_api,tk,user_id,msg):
         #reply = None
         with driver.session() as session:
             result = session.run(cypher_query6,node_id=node_id)
+            #print(cypher_query6)
             record = result.single()
             if record:
                 reply = record.get('quickReply')
@@ -264,13 +265,14 @@ def display_node(line_bot_api,tk,user_id,msg):
             else:
                 reply = None
         
-        if reply == True:
-            with driver.session() as session:
-                result = session.run(cypher_query4,node_id=node_id,msg=msg)
-                record = result.single()
-                if record:    
-                    node_id2 = record.get('node_id')
-                    node_id = node_id2
+    if True:
+        with driver.session() as session:
+            result = session.run(cypher_query4,node_id=node_id,msg=msg)
+            print(cypher_query4)
+            record = result.single()
+            if record:    
+                node_id2 = record.get('node_id')
+                node_id = node_id2
     print(f"start node id = {node_id}")        
 
 
@@ -386,6 +388,8 @@ def display_node(line_bot_api,tk,user_id,msg):
         entity = Entity_corpus[0] if Entity_corpus else None
         entity2 = Entity_corpus2[0] if Entity_corpus2 else None
         entity3 = Entity_corpus3[0] if Entity_corpus3 else None
+        print(entity)
+        print(entity2)
         print(entity3)
         #node_id = node_ids[0]
         if entity and entity.strip():
@@ -425,7 +429,7 @@ def display_node(line_bot_api,tk,user_id,msg):
                     node_ids.append(record['node_id'])
                 node_ids = list(set(node_ids))
                 if node_ids:
-                    node_id = node_ids[0]
+                    node_id2 = node_ids[0]
             #result = session.write_transaction(lambda tx: tx.run(query_update, userID=user_id, temp=temp, temp2 = dayStep,nodeID=node_id#))
        # if isEnd is False:
           #  temp = temp + 1
@@ -443,7 +447,7 @@ def display_node(line_bot_api,tk,user_id,msg):
                 if nodes:
                     node = nodes[0]
                 else:
-                    node = 0
+                    node = 1
         choice = []
         name = []
         #if reply == False:
@@ -485,7 +489,11 @@ def display_node(line_bot_api,tk,user_id,msg):
         #rs_id = rs_ids[0]
         #node_id = node_ids[0]
         with driver.session() as session:
-            result = session.write_transaction(lambda tx: tx.run(query_update, userID=user_id,temp2 = dayStep,nodeID=node_id,nodeStep = node))
+            if isFound is True:
+                result = session.write_transaction(lambda tx: tx.run(query_update, userID=user_id,temp2 = dayStep,nodeID=node_id,nodeStep = node))
+            if isFound is False:
+                result = session.write_transaction(lambda tx: tx.run(query_update, userID=user_id,temp2 = dayStep,nodeID=node_id2,nodeStep = temp))
+
         message3 = TextSendMessage(text="") 
         #if (not choice and not name):
          #   message3 = TextSendMessage(text="")
