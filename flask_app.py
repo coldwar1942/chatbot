@@ -255,7 +255,7 @@ def display_node(line_bot_api,tk,user_id,msg):
     #print(f"Text0: {property_value}")
     if (msg != "Hello"): #when user click quickreply button
         #reply = None
-        with driver.session() as session:
+        with driver.session() as session: 
             node_id_temp = node_id
             hasReply = False
             result = session.run(cypher_query6,node_id=node_id) # id(a) (a)-[r:NEXT]-> (b)
@@ -266,17 +266,18 @@ def display_node(line_bot_api,tk,user_id,msg):
                 hasReply = True
                 node_id2 = record.get('node_id') # id(b) 
             else:
-                hasReply = False
+                hasReply = False # no relationship from (a)
         #find id(c)
+        if hasReply == True:
+            node_id = node_id2
         #if hasReply == True: # have relation between (a) and (b)
-        with driver.session() as session: # if (a) -[r:NEXT]-> (b)
+        with driver.session() as session: # if (a) -[r:NEXT]-> (b) and msg = r.choice
             result = session.run(cypher_query4,node_id=node_id_temp,msg=msg) # id(b)
             print(cypher_query4)
             record = result.single()
             if record:    
-                node_id = record.get('node_id') # id(b) 
-        if hasReply == True:
-            node_id = node_id2
+                node_id = record.get('node_id') # specific node id(b) from multinode 
+        
 
         #else hasReply == False:
          #   with driver.session() as session:
