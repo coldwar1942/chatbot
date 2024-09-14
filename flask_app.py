@@ -215,7 +215,7 @@ def return_message(line_bot_api,tk,user_id,msg):
         line_bot_api.reply_message(tk,fkex)
 
 def display_node(line_bot_api,tk,user_id,msg):
-    print(f"Message is {msg}")
+   # print(f"Message is {msg}")
     conn = Neo4jConnection(uri, user, password)
     query = '''
         MATCH (n:user)
@@ -234,7 +234,7 @@ def display_node(line_bot_api,tk,user_id,msg):
         node_label = f"d{dayStep}"
         temp = property_value
         nodeStep = temp
-        print(temp)
+    #    print(temp)
     #node_label = "user"
     #property_name = "nodeStep"
     #property_name2 = 
@@ -253,27 +253,36 @@ def display_node(line_bot_api,tk,user_id,msg):
     '''
     reply = True
     #print(f"Text0: {property_value}")
-    if (msg != "Hello"):
+    if (msg != "Hello"): #when user click quickreply button
         #reply = None
         with driver.session() as session:
-            result = session.run(cypher_query6,node_id=node_id)
-            #print(cypher_query6)
+            node_id_temp = node_id
+            hasReply = False
+            result = session.run(cypher_query6,node_id=node_id) # id(a) (a)-[r:NEXT]-> (b)
+            print(cypher_query6)
             record = result.single()
-            if record:
-                reply = record.get('quickReply')
-                node_id = record.get('node_id')
+            if record:                           
+                reply = record.get('quickReply') # (a) -[r:NEXT]-> (b)
+                hasReply = True
+                node_id2 = record.get('node_id') # id(b) 
             else:
-                reply = None
-        
-    if True:
-        with driver.session() as session:
-            result = session.run(cypher_query4,node_id=node_id,msg=msg)
+                hasReply = False
+        #find id(c)
+        #if hasReply == True: # have relation between (a) and (b)
+        with driver.session() as session: # if (a) -[r:NEXT]-> (b)
+            result = session.run(cypher_query4,node_id=node_id_temp,msg=msg) # id(b)
             print(cypher_query4)
             record = result.single()
             if record:    
-                node_id2 = record.get('node_id')
-                node_id = node_id2
-    print(f"start node id = {node_id}")        
+                node_id = record.get('node_id') # id(b) 
+        if hasReply == True:
+            node_id = node_id2
+
+        #else hasReply == False:
+         #   with driver.session() as session:
+
+                   # node_id = node_id2
+   # print(f"start node id = {node_id}")        
 
 
     if property_value != 99: # when user reply message
@@ -313,6 +322,7 @@ def display_node(line_bot_api,tk,user_id,msg):
         Entity_corpus2 = []
         Entity_corpus3 = []
         isEnd = False
+        isFound = False
         node_ids = []
         #rs_ids = []
         #with driver.session() as session:
@@ -322,33 +332,35 @@ def display_node(line_bot_api,tk,user_id,msg):
             #result = session.run(query_update,userID=user_id,temp=temp+1)
         if isEnd is False:
             with driver.session() as session:
-                isFound = False
+               # isFound = False
             #result = tx.run(query_update,userID =user_id, temp=temp+1)
-                results = session.run(cypher_query,nodeID = node_id)
+                results = session.run(cypher_query,nodeID = node_id) # id(b) get node b and c
+               # print(cypher_query)
                 for record in results:
-                    isFound = True
+                    isFound = True # if find (b)-[r:NEXT]->(c)
                     node = record['a']
                     node2 = record['b']
                 #Entity_corpus.append(record['n']['name']) #Accessing the 'name' property of the node
                 #Entity_corpus2.append(record['n']['name2'])
                 #Entity_corpus3.append(record['n']['photo'])
                     if 'name' in node:
-                        Entity_corpus.append(node['name'])
+                        Entity_corpus.append(node['name'])   # get (b) properties
                     if 'name2' in node:
                         Entity_corpus2.append(node['name2'])
                     if 'photo' in node:
                         Entity_corpus3.append(node['photo'])
                    # if 'isEnd' in node2:
                     #    isEnd = node2['isEnd']
-        print(f"isFound boolean value = {isFound}")
-        if isFound is False:
+     #   print(f"isFound boolean value = {isFound}")
+        if isFound is False: # if not find (b)-[r:NEXT]->(c) or no relation from node b
             with driver.session() as session:
                 Entity_corpus = []
                 Entity_corpus2 = []
                 Entity_corpus3 = []
-                results = session.run(query_norelationship,node_id=node_id)
+                results = session.run(query_norelationship,node_id=node_id2)
+                print(query_norelationship)
                 for record in results:
-                    node = record['n']
+                    node = record['n']      # get (b) properties
                     if 'name' in node:
                         Entity_corpus.append(node['name'])
                     if 'name2' in node:
@@ -385,12 +397,12 @@ def display_node(line_bot_api,tk,user_id,msg):
                                                                      temp2 = dayStep))
            ''' #for entity in Entity_corpus:
         #print(Entity_corpus)
-        entity = Entity_corpus[0] if Entity_corpus else None
+        entity = Entity_corpus[0] if Entity_corpus else None     # properties from (b)
         entity2 = Entity_corpus2[0] if Entity_corpus2 else None
         entity3 = Entity_corpus3[0] if Entity_corpus3 else None
-        print(entity)
-        print(entity2)
-        print(entity3)
+      #  print(entity)
+       # print(entity2)
+       # print(entity3)
         #node_id = node_ids[0]
         if entity and entity.strip():
             message1 = TextSendMessage(text=entity)
@@ -418,18 +430,25 @@ def display_node(line_bot_api,tk,user_id,msg):
         '''# STEP 3.5
         
 
-        if isFound is False:
+        if isFound is False:  #if not find (b)-[r:NEXT]->(c) or no relation from node b
             temp = 1
-            dayStep = dayStep + 1
+            dayStep = dayStep + 1  # proceed to next day first node
             node_label = f"d{dayStep}"
+            cypher_query5 = f'''
+                        MATCH (n:{node_label})
+                        WHERE n.step = $variable_value
+                        RETURN id(n) AS id_n ,n
+                                                        '''
+
             # move to next day
             with driver.session() as session:
                 results = session.run(cypher_query5,variable_value=temp)
+                print(cypher_query5)
                 for record in results:
-                    node_ids.append(record['node_id'])
+                    node_ids.append(record['id_n'])
                 node_ids = list(set(node_ids))
                 if node_ids:
-                    node_id2 = node_ids[0]
+                    node_id3 = node_ids[0]  # get next day id(a)
             #result = session.write_transaction(lambda tx: tx.run(query_update, userID=user_id, temp=temp, temp2 = dayStep,nodeID=node_id#))
        # if isEnd is False:
           #  temp = temp + 1
@@ -437,30 +456,31 @@ def display_node(line_bot_api,tk,user_id,msg):
        # with driver.session() as session:
             
          #   result = session.write_transaction(lambda tx: tx.run(query_update, userID=user_id, temp=temp, temp2 = dayStep,nodeID=node_id))
-        if isFound is True:
+        if isFound is True: #find (b)-[r:NEXT]->(c)
             with driver.session() as session:
-                result = session.run(rs_query,node_id=node_id)
+                result = session.run(rs_query,node_id=node_id) # find (c) node step from id(b)
                 nodes = []
                 for record in result:
                     node = record['step']
                     nodes.append(node)
                 if nodes:
-                    node = nodes[0]
+                    node = nodes[0] # day node step
                 else:
-                    node = 1
+                    node = 1 # next day node step
         choice = []
         name = []
         #if reply == False:
-        if isFound is True:
+        if isFound is True: #find (b)-[r:NEXT]->(c)
             with driver.session() as session:
                 choice = []
                 name = []
-                print(f"current nodeStep is {node}")
-                print(f"current nodeID is {node_id}")  
-                result = session.run(cypher_query3,nodeStep=node,nodeID=node_id)
+                print(f"current nodeStep is {node}")  # (c) nodestep
+                print(f"current nodeID is {node_id}") # id(b) 
+                # id(b), (b)-[r:NEXT]->(c) get r properties
+                result = session.run(cypher_query3,nodeStep=node,nodeID=node_id) # (b)-[r:NEXT]->(c)
                 records_found = False
                 for record in result:
-                    records_found = True
+                    records_found = True # found relation properties
                     records_found = True
                     choice_value = record['choice'].strip() if record['choice'] else ""
                     #choice.append(record['choice'])
@@ -470,7 +490,7 @@ def display_node(line_bot_api,tk,user_id,msg):
                     if name_value:
                         name.append(name_value)
 
-                if not records_found:
+                if not records_found: # not found relation properties
                     choice = None
                     name = None
                # node_ids.append(record['node_id']) # node_id of next node 
@@ -488,11 +508,11 @@ def display_node(line_bot_api,tk,user_id,msg):
         #    node_id = node_ids[0]
         #rs_id = rs_ids[0]
         #node_id = node_ids[0]
-        with driver.session() as session:
-            if isFound is True:
-                result = session.write_transaction(lambda tx: tx.run(query_update, userID=user_id,temp2 = dayStep,nodeID=node_id,nodeStep = node))
-            if isFound is False:
-                result = session.write_transaction(lambda tx: tx.run(query_update, userID=user_id,temp2 = dayStep,nodeID=node_id2,nodeStep = temp))
+        with driver.session() as session: 
+            if isFound is True: #if find (b)-[r:NEXT]->(c)
+                result = session.write_transaction(lambda tx: tx.run(query_update, userID=user_id,temp2 = dayStep,nodeID=node_id,nodeStep = node))  # updated node id is (b)
+            if isFound is False:#if not find (b)-[r:NEXT]->(c) or (b)
+                result = session.write_transaction(lambda tx: tx.run(query_update, userID=user_id,temp2 = dayStep,nodeID=node_id3,nodeStep = temp)) # updated node id is next day (a)
 
         message3 = TextSendMessage(text="") 
         #if (not choice and not name):
