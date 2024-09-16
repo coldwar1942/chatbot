@@ -466,6 +466,7 @@ def display_node(line_bot_api,tk,user_id,msg):
                     nodes.append(node)
                 if nodes:
                     node = nodes[0] # day node step
+                    print(f"node step = {node}")
                 else:
                     node = 1 # next day node step
         choice = []
