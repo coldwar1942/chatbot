@@ -21,6 +21,7 @@ from linebot.v3.webhooks import (
 from linebot import LineBotApi
 
 
+
 import json
 from flask import abort
 from linebot.models import TextSendMessage, QuickReply, QuickReplyButton, MessageAction
@@ -93,13 +94,7 @@ class Neo4jConnection:
         record = self.query(query, parameters={'value': value}, single=True)
         return record is not None
 
-    def is_connected(self):
-        try:
-            # Try running a simple query to verify connection
-            self.query("RETURN 1", single=True)
-            return True
-        except Exception as e:
-            return False
+    
 
     @staticmethod
     def _check_property_query(tx, label, property_name, variable_value):
@@ -183,8 +178,8 @@ def linebot():
         #line_bot_api.reply_message(tk,TextSendMessage(text=msg_reply[0],quick_reply=msg_reply[1]))                             
         reply_msg(line_bot_api,tk,user_id,msg)
 
-        print(msg, tk)
-        print("user_id",user_id)
+      #  print(msg, tk)
+       # print("user_id",user_id)
     except Exception as e:
         print(e) 
     return 'OK'
@@ -209,10 +204,7 @@ def check_user_id(line_bot_api,tk,user_id,msg):
     #if (msg == "Hello"):
         #return_message(line_bot_api,tk,user_id,msg)
     conn = Neo4jConnection(uri, user, password)
-    if conn.is_connected():
-        print("Connected to Neo4j successfully!")
-    else:
-        print("Failed to connect!")
+
     node_label = "user"
     property_name = "userID"
     variable_value = user_id
@@ -220,10 +212,8 @@ def check_user_id(line_bot_api,tk,user_id,msg):
         #check if the property userID exits
         exists = conn.check_property(node_label, property_name, variable_value)
         if exists:
-            print("User ID exit in neo4j")
+            #print("User ID exit in neo4j")
             display_node(line_bot_api,tk,user_id,msg)
-        else:
-            print("User ID doesn't exit in neo4j")
     else:
         display_node(line_bot_api,tk,user_id,msg)
 
@@ -237,11 +227,11 @@ def display_node(line_bot_api, tk, user_id, msg):
     node_data = fetch_user_node_data(conn, user_id)
 
     if node_data:
-        node_id, day_step, node_step = node_data['nodeID'], node_data['dayStep'], node_data['nodeStep']
+        node_id, day_step, node_step, isEnd = node_data['nodeID'], node_data['dayStep'], node_data['nodeStep'], node_data['isEnd']
         if msg != "Hello":
             node_id = fetch_next_node(conn, node_id, msg) or node_id
 
-        update_user_progress(conn, user_id, node_id, day_step, node_step)
+        update_user_progress(conn, user_id, node_id, day_step, node_step,isEnd)
         send_node_info(line_bot_api, tk, conn, node_id, node_step, day_step)
     else:
         print("No node data found")
@@ -263,21 +253,26 @@ def fetch_user_node_data(conn, user_id):
 def fetch_next_node(conn, current_node_id, msg):
     query = '''
         MATCH (a)-[r:NEXT]->(b)
-        WHERE id(a) = $node_id AND r.choice = $msg
+        WHERE id(a) = $node_id AND (r.choice = $msg OR r.choice IS NULL OR r.choice = "")
         RETURN id(b) AS node_id
     '''
-    with conn.session() as session:
-        record = conn.query(query, parameters={'node_id': current_node_id, 'msg': msg}, single=True)
+    with conn._driver.session() as session:
+        result = session.run(query, parameters={'node_id': current_node_id, 'msg': msg})
+        record = result.single()  # Fetch the single record from the result
         return record["node_id"] if record else None
 
 
-def update_user_progress(conn, user_id, node_id, day_step, node_step):
+def update_user_progress(conn, user_id, node_id, day_step, node_step, isEnd = False):
     query = '''
         MATCH (n:user)
         WHERE n.userID = $user_id
         SET n.dayStep = $day_step, n.nodeID = $node_id, n.nodeStep = $node_step
     '''
-    conn.query(query, parameters={'user_id': user_id, 'day_step': day_step, 'node_id': node_id, 'node_step': node_step})
+    if isEnd:
+        day_step = day_step + 1
+        conn.query(query, parameters={'user_id': user_id, 'day_step': day_step, 'node_id': node_id, 'node_step': node_step})
+    else:
+        conn.query(query, parameters={'user_id': user_id, 'day_step': day_step, 'node_id': node_id, 'node_step': node_step})
 
 
 def send_node_info(line_bot_api, tk, conn, node_id, node_step, day_step):
@@ -288,23 +283,32 @@ def send_node_info(line_bot_api, tk, conn, node_id, node_step, day_step):
 
 def fetch_entity_data(conn, node_id, node_step):
     query = '''
-        MATCH (n)-[r:NEXT]->(m)
+        MATCH (n)
         WHERE id(n) = $node_id
-        RETURN n.name as name, n.name2 as name2, n.photo as photo, r.choice as choice
+        OPTIONAL MATCH (n)-[r:NEXT]->(m)
+        RETURN n.name as name, n.name2 as name2, n.photo as photo, r.choice as choice,r.name as quickreply
     '''
-    entity = {"name": None, "name2": None, "photo": None, "choices": []}
-    records = conn.query(query, parameters={'node_id': node_id})
+    entity = {"name": None, "name2": None, "photo": None,"quickreply":None, "choices": []}
+    
+    with conn._driver.session() as session:
+        result = session.run(query, parameters={'node_id': node_id})
+        records = list(result)
+        if not records:
+            print(f"No records found for node_id: {node_id}")
+            return None
+        for record in records:
         
-    for record in records:
-        if 'name' in record:
-            entity["name"] = record["name"]
-        if 'name2' in record:
-            entity["name2"] = record["name2"]
-        if 'photo' in record:
-            entity["photo"] = record["photo"]
-        if 'choice' in record:
-            entity["choices"].append(record["choice"])
-    return entity if any(entity.values()) else None
+            entity["name"] = record.get("name", entity["name"]).strip()
+        
+            entity["name2"] = record.get("name2", entity["name2"]).strip()
+    
+            entity["photo"] = record.get("photo", entity["photo"]).strip()
+            if record.get("quickreply") is not None:
+                entity["quickreply"] = record.get("quickreply", entity["quickreply"]).strip()
+            if record.get("choice") is not None:
+                entity["choices"].append(record["choice"])
+    
+    return entity if any(value is not None for value in entity.values()) else None
 
 
 def send_messages(line_bot_api, tk, entity_data):
@@ -315,14 +319,20 @@ def send_messages(line_bot_api, tk, entity_data):
         messages.append(TextSendMessage(text=entity_data["name2"]))
     if entity_data["photo"]:
         messages.append(ImageSendMessage(original_content_url=entity_data["photo"], preview_image_url=entity_data["photo"]))
-    if entity_data["choices"]:
-        quick_reply_buttons = [QuickReplyButton(action=MessageAction(label=c, text=c)) for c in entity_data["choices"]]
-        quick_reply = QuickReply(items=quick_reply_buttons)
-        messages.append(TextSendMessage(text="Choose an option:", quick_reply=quick_reply))
+    
+    if entity_data["quickreply"] is not None:
+        quick_reply_buttons = [QuickReplyButton(action=MessageAction(label=c, text=c)) for c in entity_data["choices"]
+        if c.strip()]
+        if quick_reply_buttons:
+            quick_reply = QuickReply(items=quick_reply_buttons)
+            messages.append(TextSendMessage(text=entity_data["quickreply"], quick_reply=quick_reply))
+    
 
     if messages:
+        
         line_bot_api.reply_message(tk, messages)
-       
+    else:
+        print("No valid messages to send")
 
 if __name__ == "__main__":
     app.run(port=8080)
