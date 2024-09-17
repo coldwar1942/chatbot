@@ -227,11 +227,11 @@ def display_node(line_bot_api, tk, user_id, msg):
     node_data = fetch_user_node_data(conn, user_id)
 
     if node_data:
-        node_id, day_step, node_step, isEnd = node_data['nodeID'], node_data['dayStep'], node_data['nodeStep'], node_data['isEnd']
+        node_id, day_step, node_step = node_data['nodeID'], node_data['dayStep'], node_data['nodeStep'] 
         if msg != "Hello":
-            node_id = fetch_next_node(conn, node_id, msg) or node_id
+            node_id = fetch_next_node(conn, node_id, msg,day_step) or node_id
 
-        update_user_progress(conn, user_id, node_id, day_step, node_step,isEnd)
+        update_user_progress(conn, user_id, node_id, day_step, node_step)
         send_node_info(line_bot_api, tk, conn, node_id, node_step, day_step)
     else:
         print("No node data found")
@@ -241,28 +241,56 @@ def fetch_user_node_data(conn, user_id):
     query = '''
         MATCH (n:user)
         WHERE n.userID = $user_id
-        RETURN n.nodeStep as nodeStep, n.dayStep as dayStep, n.nodeID as nodeID
+        RETURN n.nodeStep as nodeStep, n.dayStep as dayStep, n.nodeID as nodeID,
+        COALESCE(n.isEnd, false) as isEnd
     '''
     
     record = conn.query(query, parameters={'user_id':user_id}, single=True)
     if record:
-        return {"nodeStep": record["nodeStep"], "dayStep": record["dayStep"], "nodeID": record["nodeID"]}
+        return {"nodeStep": record["nodeStep"], "dayStep": record["dayStep"], "nodeID": record["nodeID"],"isEnd":record["isEnd"]}
     return None
 
 
-def fetch_next_node(conn, current_node_id, msg):
-    query = '''
-        MATCH (a)-[r:NEXT]->(b)
-        WHERE id(a) = $node_id AND (r.choice = $msg OR r.choice IS NULL OR r.choice = "")
-        RETURN id(b) AS node_id
-    '''
+def fetch_next_node(conn, current_node_id, msg, day_step):
+    isEnd = check_end_node(conn, current_node_id)
+    if isEnd == False:
+        node_label = f"d{day_step}"
+        query = f'''
+            MATCH (a:{node_label})
+            WHERE id(a) = $node_id  
+            OPTIONAL MATCH (a:{node_label})-[r:NEXT]->(b:{node_label})
+            WHERE r.choice = $msg OR r.choice IS NULL OR r.choice = ""
+            RETURN id(b) AS node_id
+        '''
+    else:
+        #day_step = day_step + 1
+        node_label = f"d{day_step}"
+        query = f'''
+            MATCH (a:{node_label})
+            WHERE a.step = 1
+            OPTIONAL MATCH (a:{node_label})-[r:NEXT]->(b:{node_label})
+            WHERE a.step = 1 AND (r.choice = $msg OR r.choice IS NULL OR r.choice = "")
+            RETURN id(a) AS node_id
+        '''
     with conn._driver.session() as session:
         result = session.run(query, parameters={'node_id': current_node_id, 'msg': msg})
         record = result.single()  # Fetch the single record from the result
         return record["node_id"] if record else None
 
+def check_end_node(conn, current_node_id):
+    query = f'''
+        MATCH (a)
+        WHERE id(a) = $node_id AND a.isEnd = true
+        RETURN true AS result
+    '''
+    with conn._driver.session() as session:
+        result = session.run(query, parameters={'node_id': current_node_id})
+        record = result.single()  
+        return record["result"] if record else False
 
-def update_user_progress(conn, user_id, node_id, day_step, node_step, isEnd = False):
+def update_user_progress(conn, user_id, node_id, day_step, node_step):
+    isEnd = check_end_node(conn, node_id)
+    print(isEnd)
     query = '''
         MATCH (n:user)
         WHERE n.userID = $user_id
@@ -270,10 +298,9 @@ def update_user_progress(conn, user_id, node_id, day_step, node_step, isEnd = Fa
     '''
     if isEnd:
         day_step = day_step + 1
-        conn.query(query, parameters={'user_id': user_id, 'day_step': day_step, 'node_id': node_id, 'node_step': node_step})
-    else:
-        conn.query(query, parameters={'user_id': user_id, 'day_step': day_step, 'node_id': node_id, 'node_step': node_step})
-
+        node_step = 1
+    conn.query(query, parameters={'user_id': user_id, 'day_step': day_step, 'node_id': node_id, 'node_step': node_step})
+    
 
 def send_node_info(line_bot_api, tk, conn, node_id, node_step, day_step):
     entity_data = fetch_entity_data(conn, node_id, node_step)
