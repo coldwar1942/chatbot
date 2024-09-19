@@ -21,7 +21,7 @@ from linebot.v3.webhooks import (
 from linebot import LineBotApi
 
 
-
+import re
 import json
 from flask import abort
 from linebot.models import TextSendMessage, QuickReply, QuickReplyButton, MessageAction
@@ -225,14 +225,17 @@ def return_message(line_bot_api,tk,user_id,msg):
 def display_node(line_bot_api, tk, user_id, msg):
     conn = Neo4jConnection(uri, user, password)
     node_data = fetch_user_node_data(conn, user_id)
-
+    
     if node_data:
         node_id, day_step, node_step = node_data['nodeID'], node_data['dayStep'], node_data['nodeStep'] 
+        node_var = fetch_node_variable(conn, node_id)
         if msg != "Hello":
+            if node_var:
+                update_user_variable(conn,user_id,node_var,msg)
             node_id = fetch_next_node(conn, node_id, msg,day_step) or node_id
 
         update_user_progress(conn, user_id, node_id, day_step, node_step)
-        send_node_info(line_bot_api, tk, conn, node_id, node_step, day_step)
+        send_node_info(line_bot_api, tk, conn, node_id, node_step, day_step,user_id)
     else:
         print("No node data found")
 
@@ -250,7 +253,17 @@ def fetch_user_node_data(conn, user_id):
         return {"nodeStep": record["nodeStep"], "dayStep": record["dayStep"], "nodeID": record["nodeID"],"isEnd":record["isEnd"]}
     return None
 
-
+def fetch_node_variable(conn, current_node_id):
+    query = '''
+        MATCH (a)-[r:NEXT]->(b)
+        WHERE id(a) = $node_id
+        RETURN a.parameter AS node_var
+    '''
+    with conn._driver.session() as session:
+        result = session.run(query, parameters={'node_id': current_node_id})
+        record = result.single() 
+        return record["node_var"] if record else None
+    
 def fetch_next_node(conn, current_node_id, msg, day_step):
     isEnd = check_end_node(conn, current_node_id)
     if isEnd == False:
@@ -291,7 +304,7 @@ def check_end_node(conn, current_node_id):
 def update_user_progress(conn, user_id, node_id, day_step, node_step):
     isEnd = check_end_node(conn, node_id)
     print(isEnd)
-    query = '''
+    query = f'''
         MATCH (n:user)
         WHERE n.userID = $user_id
         SET n.dayStep = $day_step, n.nodeID = $node_id, n.nodeStep = $node_step
@@ -301,10 +314,18 @@ def update_user_progress(conn, user_id, node_id, day_step, node_step):
         node_step = 1
     conn.query(query, parameters={'user_id': user_id, 'day_step': day_step, 'node_id': node_id, 'node_step': node_step})
     
+def update_user_variable(conn, user_id, node_var, msg):
+    query = f'''
+        MATCH (n:user)
+        WHERE n.userID = $user_id
+        SET n.{node_var} = $msg
+    '''
+    conn.query(query, parameters={'user_id': user_id, 'node_var': node_var, 'msg':msg})
 
-def send_node_info(line_bot_api, tk, conn, node_id, node_step, day_step):
+def send_node_info(line_bot_api, tk, conn, node_id, node_step, day_step,user_id):
     entity_data = fetch_entity_data(conn, node_id, node_step)
     if entity_data:
+        entity_data = replace_text_with_variable(conn,user_id,entity_data)
         send_messages(line_bot_api, tk, entity_data)
 
 
@@ -337,6 +358,26 @@ def fetch_entity_data(conn, node_id, node_step):
     
     return entity if any(value is not None for value in entity.values()) else None
 
+def replace_text_with_variable(conn,user_id,entity_data):
+    print(entity_data)
+    pattern = r'<<\s*(.*?)\s*>>'
+    for key, text in entity_data.items():
+        if isinstance(text, str):
+            matches = re.findall(pattern, text) 
+            print(f"Matches for {key}: {matches}")
+            for match in matches:
+                query = f'''
+                    MATCH (n:user)
+                    WHERE n.userID = $user_id
+                    RETURN n.{match} AS node_var
+                '''
+                node_var = conn.query(query, parameters={'user_id': user_id}, single=True)
+                if node_var:
+                    entity_data[key] = entity_data[key].replace(f"<<{match}>>", str(node_var))
+                else:
+                    print(f"No value found for {match}, skipping replacement.")
+ 
+    return entity_data
 
 def send_messages(line_bot_api, tk, entity_data):
     messages = []
