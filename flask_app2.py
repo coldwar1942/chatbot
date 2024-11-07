@@ -1,4 +1,4 @@
-from flask import Flask, request, abort
+from flask import Flask, request, abort,jsonify
 from neo4j import GraphDatabase, basic_auth
 from linebot.v3 import (
     WebhookHandler
@@ -20,7 +20,7 @@ from linebot.v3.webhooks import (
 
 from linebot import LineBotApi
 
-
+import requests
 import re
 import json
 from flask import abort
@@ -40,7 +40,7 @@ driver = GraphDatabase.driver(
         "neo4j://172.30.81.113:7687",
         auth=basic_auth("neo4j", "password"))
 
-
+CHANNEL_ACCESS_TOKEN = 'odz7P1Pu4YPBKfC2UaRJGzhP671gKFSR7DWrCKkBLCZaMUL4vRs62JDF9sfliaulr3C18QMazzHCXAZPBofFrBjs3schUsCWY9LoIbz0AH3PmGYb0COtKTDDwfqtlgJJ7W3mCN4YnYRwr41BTq6sKgdB04t89/1O/w1cDnyilFU='
 
 #@app.route("/callback", methods=['POST'])
 #def callback():
@@ -115,7 +115,23 @@ class Neo4jConnection:
         except Exception as e:
             print(f"Connection failed: {e}")
             return False
-
+def push_line_message(user_id, message_text):
+    line_api_url = 'https://api.line.me/v2/bot/message/push'
+    headers = {
+            'Content-Type': 'application/json',
+            'Authorization': f'Bearer {CHANNEL_ACCESS_TOKEN}'
+            }
+    payload = {
+            'to': user_id,
+            'messages': [
+                {
+                    'type': 'text',
+                    'text': message_text
+                }
+            ]
+        }
+    response = requests.post(line_api_url, headers=headers, json=payload)
+    return response.status_code, response.text
 
 def push_flex_message(to, alt_text, flex_content):
     flex_message = FlexSendMessage(
@@ -152,6 +168,22 @@ flex_content = {
         ]
     }
 }
+
+@app.route('/push_message_with_id', methods=['POST'])
+def push_message_with_id():
+    data = request.get_json()
+    user_id = data.get('user_id')
+    if not user_id:
+        return jsonify({'error': 'user_id is required'}), 400
+    message_text = "Do you want to continue?"
+    status_code, response_text = push_line_message(user_id, message_text)
+    if status_code == 200:
+        print('Message sent successfully!')
+        return jsonify({'message': 'Message sent successfully!'}), 200
+    else:
+        print(f'Failed to send message: {response_text}')
+        return jsonify({'error': f'Failed to send message: {response_text}'}), 500
+
 
 @app.route("/send_flex_message", methods=['GET'])
 def send_flex_message():
@@ -204,7 +236,7 @@ def check_user_id(line_bot_api,tk,user_id,msg):
     #if (msg == "Hello"):
         #return_message(line_bot_api,tk,user_id,msg)
     conn = Neo4jConnection(uri, user, password)
-
+    getDisplayName(conn, user_id)
     node_label = "user"
     property_name = "userID"
     variable_value = user_id
@@ -224,21 +256,35 @@ def return_message(line_bot_api,tk,user_id,msg):
 
 def display_node(line_bot_api, tk, user_id, msg):
     conn = Neo4jConnection(uri, user, password)
-    node_data = fetch_user_node_data(conn, user_id)
     
+    node_data = fetch_user_node_data(conn, user_id)
+     
     if node_data:
         node_id, day_step, node_step = node_data['nodeID'], node_data['dayStep'], node_data['nodeStep'] 
         node_var = fetch_node_variable(conn, node_id)
+        question_tag = fetch_question_rel(conn, node_id)
         if msg != "Hello":
             if node_var:
                 update_user_variable(conn,user_id,node_var,msg)
+            if question_tag:
+                update_user_score(conn,user_id, node_id, msg, question_tag)
             node_id = fetch_next_node(conn, node_id, msg,day_step) or node_id
 
-        update_user_progress(conn, user_id, node_id, day_step, node_step)
+        update_user_progress(conn, user_id, node_id, day_step, node_step, question_tag)
         send_node_info(line_bot_api, tk, conn, node_id, node_step, day_step,user_id)
     else:
         print("No node data found")
 
+def getDisplayName(conn, user_id):
+    query = '''
+        MATCH (n:user)
+        WHERE n.userID = $user_id
+        SET n.p_display_name = $p_display_name
+    '''
+    profile = line_bot_api.get_profile(user_id)
+    p_display_name = profile.display_name
+    #print(f"User's display name: {p_display_name}")
+    conn.query(query, parameters={'user_id': user_id, 'p_display_name': p_display_name})
 
 def fetch_user_node_data(conn, user_id):
     query = '''
@@ -263,7 +309,18 @@ def fetch_node_variable(conn, current_node_id):
         result = session.run(query, parameters={'node_id': current_node_id})
         record = result.single() 
         return record["node_var"] if record else None
-    
+
+def fetch_question_rel(conn, current_node_id):
+    query= '''
+        MATCH (a)-[r:NEXT]->(b)
+        WHERE id(a) = $node_id AND r.isCorrect IS NOT NULL
+        RETURN labels(a) AS label
+    '''
+    with conn._driver.session() as session:
+        result = session.run(query, parameters={'node_id': current_node_id})
+        record = result.single()
+        return record["label"] if record else None
+
 def fetch_next_node(conn, current_node_id, msg, day_step):
     isEnd = check_end_node(conn, current_node_id)
     if isEnd == False:
@@ -301,13 +358,15 @@ def check_end_node(conn, current_node_id):
         record = result.single()  
         return record["result"] if record else False
 
-def update_user_progress(conn, user_id, node_id, day_step, node_step):
+def update_user_progress(conn, user_id, node_id, day_step, node_step, question_tag):
     isEnd = check_end_node(conn, node_id)
+    #dayScore = f"{question_tag}Score"
     print(isEnd)
     query = f'''
         MATCH (n:user)
         WHERE n.userID = $user_id
-        SET n.dayStep = $day_step, n.nodeID = $node_id, n.nodeStep = $node_step
+        SET n.dayStep = $day_step, n.nodeID = $node_id, n.nodeStep = $node_step,
+        
     '''
     if isEnd:
         day_step = day_step + 1
@@ -321,6 +380,30 @@ def update_user_variable(conn, user_id, node_var, msg):
         SET n.{node_var} = $msg
     '''
     conn.query(query, parameters={'user_id': user_id, 'node_var': node_var, 'msg':msg})
+
+def update_user_score(conn, user_id, node_id, msg, question_tag):
+    dayScore = f"{question_tag}Score"
+    query = f'''
+        MATCH (n:user)
+        WHERE n.userID = $user_id
+        SET n.{dayScore} = coalesce(n.{dayScore}, 0) + 1
+    '''
+    isCorrect = check_is_correct(conn, node_id, msg)
+    if isCorrect:
+        conn.query(query, parameters={'user_id': user_id})
+
+
+def check_is_correct(conn,  node_id, msg):
+    query = f'''
+        MATCH (a)-[r:NEXT]->(b)
+        WHERE id(a) = $node_id AND r.choice = $msg
+        RETURN r.isCorrect AS isCorrect
+    '''
+    with conn._driver.session() as session:
+        result = session.run(query, parameters={'node_id': node_id, 'msg': msg})
+        record = result.single()
+        return record["isCorrect"] if record else None
+
 
 def send_node_info(line_bot_api, tk, conn, node_id, node_step, day_step,user_id):
     entity_data = fetch_entity_data(conn, node_id, node_step)
@@ -345,7 +428,6 @@ def fetch_entity_data(conn, node_id, node_step):
             print(f"No records found for node_id: {node_id}")
             return None
         for record in records:
-        
             entity["name"] = record.get("name", entity["name"]).strip()
         
             entity["name2"] = record.get("name2", entity["name2"]).strip()
@@ -364,7 +446,7 @@ def replace_text_with_variable(conn,user_id,entity_data):
     for key, text in entity_data.items():
         if isinstance(text, str):
             matches = re.findall(pattern, text) 
-            print(f"Matches for {key}: {matches}")
+            #print(f"Matches for {key}: {matches}")
             for match in matches:
                 query = f'''
                     MATCH (n:user)
@@ -373,7 +455,8 @@ def replace_text_with_variable(conn,user_id,entity_data):
                 '''
                 node_var = conn.query(query, parameters={'user_id': user_id}, single=True)
                 if node_var:
-                    entity_data[key] = entity_data[key].replace(f"<<{match}>>", str(node_var))
+                    
+                    entity_data[key] = entity_data[key].replace(f"<<{match}>>", str(node_var[0]))
                 else:
                     print(f"No value found for {match}, skipping replacement.")
  
