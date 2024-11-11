@@ -255,8 +255,14 @@ def return_message(line_bot_api,tk,user_id,msg):
         line_bot_api.reply_message(tk,fkex)
 
 def display_node(line_bot_api, tk, user_id, msg):
-    conn = Neo4jConnection(uri, user, password)
+    video_url = "https://d2tu913n5i22kj.cloudfront.net/VDOwDay1.mp4"
+    thumbnail_url = "https://www.example.com/thumbnail.jpg"
+    title = "Sample Video Title"
+    description = "This is a description of the video."
+
     
+    conn = Neo4jConnection(uri, user, password)
+     
     node_data = fetch_user_node_data(conn, user_id)
      
     if node_data:
@@ -314,7 +320,7 @@ def fetch_question_rel(conn, current_node_id):
     query= '''
         MATCH (a)-[r:NEXT]->(b)
         WHERE id(a) = $node_id AND r.isCorrect IS NOT NULL
-        RETURN labels(a) AS label
+        RETURN HEAD(labels(a)) AS label
     '''
     with conn._driver.session() as session:
         result = session.run(query, parameters={'node_id': current_node_id})
@@ -365,7 +371,7 @@ def update_user_progress(conn, user_id, node_id, day_step, node_step, question_t
     query = f'''
         MATCH (n:user)
         WHERE n.userID = $user_id
-        SET n.dayStep = $day_step, n.nodeID = $node_id, n.nodeStep = $node_step,
+        SET n.dayStep = $day_step, n.nodeID = $node_id, n.nodeStep = $node_step
         
     '''
     if isEnd:
@@ -417,9 +423,10 @@ def fetch_entity_data(conn, node_id, node_step):
         MATCH (n)
         WHERE id(n) = $node_id
         OPTIONAL MATCH (n)-[r:NEXT]->(m)
-        RETURN n.name as name, n.name2 as name2, n.photo as photo, r.choice as choice,r.name as quickreply
+        RETURN n.name as name, n.name2 as name2, n.photo as photo, r.choice as choice,r.name as quickreply, coalesce(n.video, '') as video
     '''
-    entity = {"name": None, "name2": None, "photo": None,"quickreply":None, "choices": []}
+    entity = {"name": None, "name2": None, "photo": None,"quickreply":None, "choices": [],
+              "video":None}
     
     with conn._driver.session() as session:
         result = session.run(query, parameters={'node_id': node_id})
@@ -433,6 +440,8 @@ def fetch_entity_data(conn, node_id, node_step):
             entity["name2"] = record.get("name2", entity["name2"]).strip()
     
             entity["photo"] = record.get("photo", entity["photo"]).strip()
+
+            entity["video"] = record.get("video", entity["video"]).strip()
             if record.get("quickreply") is not None:
                 entity["quickreply"] = record.get("quickreply", entity["quickreply"]).strip()
             if record.get("choice") is not None:
@@ -463,6 +472,7 @@ def replace_text_with_variable(conn,user_id,entity_data):
     return entity_data
 
 def send_messages(line_bot_api, tk, entity_data):
+    print(entity_data["video"])
     messages = []
     if entity_data["name"]:
         messages.append(TextSendMessage(text=entity_data["name"]))
@@ -470,7 +480,9 @@ def send_messages(line_bot_api, tk, entity_data):
         messages.append(TextSendMessage(text=entity_data["name2"]))
     if entity_data["photo"]:
         messages.append(ImageSendMessage(original_content_url=entity_data["photo"], preview_image_url=entity_data["photo"]))
-    
+    if entity_data["video"]:
+        messages.append(VideoSendMessage(original_content_url=entity_data["video"],preview_image_url=entity_data["video"]))
+
     if entity_data["quickreply"] is not None:
         quick_reply_buttons = [QuickReplyButton(action=MessageAction(label=c, text=c)) for c in entity_data["choices"]
         if c.strip()]
@@ -484,6 +496,50 @@ def send_messages(line_bot_api, tk, entity_data):
         line_bot_api.reply_message(tk, messages)
     else:
         print("No valid messages to send")
+
+def send_video_message(user_id, video_url, thumbnail_url):
+    video_message = VideoSendMessage(
+            original_content_url=video_url,  # URL of the video
+            preview_image_url=thumbnail_url  # URL of the thumbnail image
+        )
+    line_bot_api.push_message(user_id, video_message)
+
+def create_video_flex_message(video_url, thumbnail_url, title, description):
+    bubble = BubbleContainer(
+        body=BoxComponent(
+            layout="vertical",
+            contents=[
+                ImageComponent(
+                    url=thumbnail_url,
+                    size="full",
+                    aspect_ratio="16:9",
+                    aspect_mode="cover",
+                    action=URIAction(uri=video_url, label="Play Video")
+                ),
+                BoxComponent(
+                    layout="vertical",
+                    contents=[
+                        TextComponent(
+                            text=title,
+                            weight="bold",
+                            size="lg",                                      
+                            wrap=True
+                        ),
+                        TextComponent(
+                            text=description,
+                            size="sm",
+                            wrap=True,
+                            color="#666666"
+                        )
+                    ],
+                    spacing ="sm",
+                    margin="lg"
+                )
+            ]
+        )
+    )
+    flex_message = FlexSendMessage(alt_text="Video Message", contents=bubble)
+    return flex_message
 
 if __name__ == "__main__":
     app.run(port=8080)
