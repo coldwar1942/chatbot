@@ -269,12 +269,18 @@ def display_node(line_bot_api, tk, user_id, msg):
         node_id, day_step, node_step = node_data['nodeID'], node_data['dayStep'], node_data['nodeStep'] 
         node_var = fetch_node_variable(conn, node_id)
         question_tag = fetch_question_rel(conn, node_id)
+        final_score = fetch_show_score_rel(conn, user_id, node_id, question_tag)
+        print(f"final score1 is {final_score}")
         if msg != "Hello":
             if node_var:
                 update_user_variable(conn,user_id,node_var,msg)
             if question_tag:
                 update_user_score(conn,user_id, node_id, msg, question_tag)
-            node_id = fetch_next_node(conn, node_id, msg,day_step) or node_id
+            if final_score:
+                print(f"final score2 is {final_score}")
+                node_id = final_score
+            else:
+                node_id = fetch_next_node(conn, node_id, msg,day_step) or node_id
 
         update_user_progress(conn, user_id, node_id, day_step, node_step, question_tag)
         send_node_info(line_bot_api, tk, conn, node_id, node_step, day_step,user_id)
@@ -329,6 +335,7 @@ def fetch_question_rel(conn, current_node_id):
 
 def fetch_next_node(conn, current_node_id, msg, day_step):
     isEnd = check_end_node(conn, current_node_id)
+    
     if isEnd == False:
         node_label = f"d{day_step}"
         query = f'''
@@ -363,6 +370,32 @@ def check_end_node(conn, current_node_id):
         result = session.run(query, parameters={'node_id': current_node_id})
         record = result.single()  
         return record["result"] if record else False
+
+def fetch_show_score_rel(conn, user_id,current_node_id, question_tag):
+    dayScore = f"{question_tag}Score"
+    query = f'''
+        MATCH (n:user)
+        WHERE n.userID = $user_id
+        RETURN n.d9Score as score
+
+    '''
+    with conn._driver.session() as session:
+        result = session.run(query, parameters={'user_id': user_id})
+        score_record = result.single()
+    score = score_record["score"] if score_record else None
+    print(f"score is {score}")
+    if score is not None:
+        query = f'''
+            MATCH (a)-[r:SCORE]->(b)
+            WHERE id(a) = $current_node_id AND r.score = $score
+            RETURN id(b) as node_id
+        '''
+        with conn._driver.session() as session:
+            result = session.run(query, parameters={'current_node_id': current_node_id, 'score': score})
+            record = result.single()
+            return record["node_id"] if record else False
+    else:
+        return False
 
 def update_user_progress(conn, user_id, node_id, day_step, node_step, question_tag):
     isEnd = check_end_node(conn, node_id)
