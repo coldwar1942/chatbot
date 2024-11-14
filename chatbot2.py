@@ -21,16 +21,17 @@ driver = GraphDatabase.driver(uri, auth=(username, password))
 def fetch_data_from_neo4j():
     query = """
     MATCH (n:QAM)-[r:Answer]->(m:QAM)
-    RETURN n.answer AS answer, m 
+    RETURN n, m 
     """
     results = []
     with driver.session() as session:
         result = session.run(query)
         for record in result:
-            answer = record["answer"]
+            #answer = record["answer"]
+            n_properties = dict(record["n"].items())
             m_properties = dict(record["m"].items())  # Convert properties to dictionary
             results.append({
-                "answer": answer,
+                "answer": n_properties,
                 "questions": m_properties
                 })
     
@@ -38,18 +39,53 @@ def fetch_data_from_neo4j():
 
 # Fetch data from Neo4j and create the DataFrame
 results = fetch_data_from_neo4j()
-flattened_data = []
+merged_results = []
+#print(results)
 for item in results:
+    # Extract the answer
+    answer_text = item['answer']['answer']
+    # Combine all question values into a single string
+    #questions_combined = item.get('question', '')
+    for question_key, question_text in item['questions'].items():
+        merged_results.append({
+            'question': question_text,
+            'answer': answer_text
+            })
+   # if isinstance(questions_dict, dict):
+  #      questions_combined = " ".join(questions_dict.values())
+   # else:
+    #    questions_combined = questions_dict  # In case questions_dict is already a string
+    # Append to the merged results list
+
+print(f"merged is {merged_results}")
+#print(f"results is {results}")
+flattened_data = []
+#for item in merged_results:
+ #   answers = item['answer'].values()
+  #  questions = item['questions'].values()  # Extract all questions
+   # for question in questions:
+    #    flattened_data.append([question, answer])
+#for item in merged_results:
+    #answer = item.get('answer', '')
+   # questions_dict = item['question']
+    
+   # merged_results.append({
+      #  'answer': answer,
+     #   'question': questions_dict
+    #    })
+for item in merged_results:
     answer = item['answer']
-    questions = item['questions'].values()  # Extract all questions
-    for question in questions:
-        flattened_data.append([question, answer])
-column_name = 'answer'
+    question = item['question']
+    flattened_data.append({'question': question, 'answer': answer})
+print("Flattened Data:")
 print(flattened_data)
-df = pd.DataFrame(flattened_data, columns=['question', column_name])
+
+#column_name = 'answer'
+#print(flattened_data)
+df = pd.DataFrame(flattened_data, columns=['question', 'answer'])
 # Step 2: Create vectors from the text
 text = df['question']
-print(text)
+#print(text)
 encoder = SentenceTransformer('kornwtp/SCT-model-wangchanberta')
 vectors = encoder.encode(text)
 
