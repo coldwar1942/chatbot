@@ -468,13 +468,14 @@ def fetch_entity_data(conn, node_id, node_step):
             print(f"No records found for node_id: {node_id}")
             return None
         for record in records:
-            entity["name"] = record.get("name", entity["name"]).strip()
+            entity["name"] = record.get("name", entity["name"]).strip() if record.get("name") else entity["name"]
         
-            entity["name2"] = record.get("name2", entity["name2"]).strip()
-    
-            entity["photo"] = record.get("photo", entity["photo"]).strip()
+            entity["name2"] = record.get("name2", entity["name2"]).strip() if record.get("name2") else entity["name2"]
 
-            entity["video"] = record.get("video", entity["video"]).strip()
+    
+            entity["photo"] = record.get("photo", entity["photo"]).strip() if record.get("photo") else entity["photo"]
+
+            entity["video"] = record.get("video", entity["video"]).strip() if record.get("video") else entity["video"]
             if record.get("quickreply") is not None:
                 entity["quickreply"] = record.get("quickreply", entity["quickreply"]).strip()
             if record.get("choice") is not None:
