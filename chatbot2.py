@@ -1,14 +1,14 @@
 from flask import Flask, request, jsonify
 from linebot import LineBotApi, WebhookHandler
 from linebot.exceptions import InvalidSignatureError
-from linebot.models import MessageEvent, TextMessage, TextSendMessage
+from linebot.models import MessageEvent, TextMessage, TextSendMessage, ImageSendMessage
 from sentence_transformers import SentenceTransformer
 import pandas as pd
 import faiss
 import numpy as np
 import json
 from neo4j import GraphDatabase
-
+import re
 app = Flask(__name__)
 
 # Neo4j database connection
@@ -21,17 +21,19 @@ driver = GraphDatabase.driver(uri, auth=(username, password))
 def fetch_data_from_neo4j():
     query = """
     MATCH (n:QAM)-[r:Answer]->(m:QAM)
-    RETURN n, m 
+    RETURN n.answer AS answer,n.pic AS pic, m 
     """
     results = []
     with driver.session() as session:
         result = session.run(query)
         for record in result:
-            #answer = record["answer"]
-            n_properties = dict(record["n"].items())
+            answer = record["answer"]
+            pic = record.get("pic", "default_value")
+            #n_properties = dict(record["n"].items())
             m_properties = dict(record["m"].items())  # Convert properties to dictionary
             results.append({
-                "answer": n_properties,
+                "answer": answer,
+                "pic": pic,
                 "questions": m_properties
                 })
     
@@ -43,13 +45,15 @@ merged_results = []
 #print(results)
 for item in results:
     # Extract the answer
-    answer_text = item['answer']['answer']
+    answer_text = item['answer']
+    pic_url = item.get('pic', None)
     # Combine all question values into a single string
     #questions_combined = item.get('question', '')
     for question_key, question_text in item['questions'].items():
         merged_results.append({
             'question': question_text,
-            'answer': answer_text
+            'answer': answer_text,
+            'pic': pic_url
             })
    # if isinstance(questions_dict, dict):
   #      questions_combined = " ".join(questions_dict.values())
@@ -57,7 +61,7 @@ for item in results:
     #    questions_combined = questions_dict  # In case questions_dict is already a string
     # Append to the merged results list
 
-print(f"merged is {merged_results}")
+#print(f"merged is {merged_results}")
 #print(f"results is {results}")
 flattened_data = []
 #for item in merged_results:
@@ -74,7 +78,10 @@ flattened_data = []
      #   'question': questions_dict
     #    })
 for item in merged_results:
-    answer = item['answer']
+    if item['answer'] == "":
+        answer = item['pic']
+    else:
+        answer = item['answer']
     question = item['question']
     flattened_data.append({'question': question, 'answer': answer})
 print("Flattened Data:")
@@ -125,7 +132,18 @@ def check_sentence(msg):
 def return_message(line_bot_api, tk, user_id, msg):
     chk_msg = check_sentence(msg)
     response = f"Similar to: {chk_msg[0]} Answer: {chk_msg[1]}"
-    line_bot_api.reply_message(tk, TextSendMessage(text=response))
+    
+    url_pattern = r'https?://[^\s]+'
+    urls = re.findall(url_pattern, response)
+    if urls:
+        image_url = urls[0]
+        image_message = ImageSendMessage(
+            original_content_url=image_url, 
+            preview_image_url=image_url
+            )
+        line_bot_api.reply_message(tk, [TextSendMessage(text=response), image_message])
+    else:
+        line_bot_api.reply_message(tk, TextSendMessage(text=response))
 
 @app.route("/", methods=['POST'])
 def linebot():
