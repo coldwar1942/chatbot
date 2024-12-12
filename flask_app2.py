@@ -293,15 +293,22 @@ def display_node(line_bot_api, tk, user_id, msg):
         node_var = fetch_node_variable(conn, node_id)
         question_tag = fetch_question_rel(conn, node_id)
         final_score = fetch_show_score_rel(conn, user_id, node_id, question_tag)
-        print(f"final score1 is {final_score}")
+        
+        wrongAnswers = fetch_answer(conn,user_id, node_id)
+        showAnswer = fetch_answer_rel(line_bot_api,tk,conn, node_id, wrongAnswers,user_id)
+        print(wrongAnswer)
+        #print(f"final score1 is {final_score}")
         if msg != "Hello":
             if node_var:
                 update_user_variable(conn,user_id,node_var,msg)
             if question_tag:
                 update_user_score(conn,user_id, node_id, msg, question_tag)
+                
+
             if final_score:
-                print(f"final score2 is {final_score}")
                 node_id = final_score
+            elif showAnswer:
+                node_id = showAnswer
             else:
                 node_id = fetch_next_node(conn, node_id, msg,day_step) or node_id
 
@@ -356,6 +363,56 @@ def fetch_question_rel(conn, current_node_id):
         record = result.single()
         return record["label"] if record else None
 
+def fetch_answer_rel(line_bot_api,tk,conn, node_id, wrongAnswers,user_id):
+    query = f'''
+        MATCH (a)-[r:ANSWER]->(b)
+        WHERE id(a) = $node_id 
+        RETURN r.number AS number
+    '''
+    with conn._driver.session() as session:
+        result = session.run(query, parameters={'node_id': current_node_id})
+        record = result.single()
+        element = record["number"] if record else None
+        
+        traverse_nodes(line_bot_api,tk,conn,wrongAnswers,node_id,user_id)
+    
+
+def traverse_nodes(line_bot_api,tk,conn,wrongAnswers, node_id, user_id,index=0):
+    if index >= len(wrongAnswers):
+        return
+    if wrongAnswers[index] == 0:
+        isFalse = True
+    if wrongAnswers[index] == 1:
+        isFalse = False
+    query = f'''
+        MATCH (a)-[r:ANSWER]->(b)
+        WHERE id(a) = $node_id and r.isFalse = $isFalse
+        RETURN id(b) as node_id
+        ORDER BY r.number ASC
+        LIMIT 1
+    '''
+    with conn._driver.session() as session:
+        result = session.run(query2, parameters={'node_id': node_id, 'isFalse': isFalse})
+        record = result.single()
+        if record:
+            print(f"Current Node: {node_id}, Next Node: {record['nextNode']}")
+            node_id = record["node_id"]
+            send_node_info(line_bot_api, tk, conn, node_id, 1, 1,user_id)
+            traverse_nodes(line_bot_api,tk,conn,wrongAnswers, node_id, user_id, index + 1)
+
+    #traverse_nodes(conn,wrongAnswers,node_id, index +1)
+
+def fetch_answer(conn, user_id,node_id):
+    query = f'''
+        MATCH (n:user)
+        WHERE n.userID = $user_id
+        RETURN n.d9Wrong AS wrong
+    '''
+    with conn._driver.session() as session:
+        result = session.run(query, parameters={'user_id': user_id})
+        wrong_answers_record = result.single()
+        return wrong_answers_record["wrong"] if wrong_answers_record else None
+
 def fetch_next_node(conn, current_node_id, msg, day_step):
     isEnd = check_end_node(conn, current_node_id)
     
@@ -402,6 +459,7 @@ def fetch_show_score_rel(conn, user_id,current_node_id, question_tag):
         RETURN n.d9Score as score
 
     '''
+    
     with conn._driver.session() as session:
         result = session.run(query, parameters={'user_id': user_id})
         score_record = result.single()
@@ -445,15 +503,18 @@ def update_user_variable(conn, user_id, node_var, msg):
 
 def update_user_score(conn, user_id, node_id, msg, question_tag):
     dayScore = f"{question_tag}Score"
+    wrongAnswer = f"{question_tag}Wrong"
     query = f'''
         MATCH (n:user)
         WHERE n.userID = $user_id
-        SET n.{dayScore} = coalesce(n.{dayScore}, 0) + 1
+        SET n.{dayScore} = coalesce(n.{dayScore}, 0) + 1,
+            n.{wrongAnswer} = coalesce(n.{wrongAnswer}, []) + [1]
     '''
     query2 = f'''
         MATCH (n:user)
         WHERE n.userID = $user_id
-        SET n.{dayScore} = coalesce(n.{dayScore}, 0) + 0
+        SET n.{dayScore} = coalesce(n.{dayScore}, 0) + 0,
+            n.{wrongAnswer} = coalesce(n.{wrongAnswer}, []) + [0]
     '''
     isCorrect = check_is_correct(conn, node_id, msg)
     
@@ -487,6 +548,7 @@ def fetch_entity_data(conn, node_id, node_step):
         MATCH (n)
         WHERE id(n) = $node_id
         OPTIONAL MATCH (n)-[r:NEXT]->(m)
+        OPTIONAL MATCH (n)-[a:ANSWER]->(m)
         RETURN n.name as name, n.name2 as name2, n.photo as photo, r.choice as choice,r.name as quickreply, coalesce(n.video, '') as video
     '''
     entity = {"name": None, "name2": None, "photo": None,"quickreply":None, "choices": [],
