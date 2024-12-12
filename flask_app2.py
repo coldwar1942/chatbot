@@ -192,6 +192,8 @@ def send_flex_message():
     push_flex_message(user_id, alt_text, flex_content)
     return 'Flex Message sent!'
 
+
+
 @app.route("/", methods=['POST'])
 def linebot():
     body = request.get_data(as_text=True)
@@ -211,7 +213,7 @@ def linebot():
         reply_msg(line_bot_api,tk,user_id,msg)
 
       #  print(msg, tk)
-       # print("user_id",user_id)
+        print("user_id",user_id)
     except Exception as e:
         print(e) 
     return 'OK'
@@ -235,8 +237,9 @@ def reply_msg(line_bot_api,tk,user_id,msg):
 def check_user_id(line_bot_api,tk,user_id,msg):
     #if (msg == "Hello"):
         #return_message(line_bot_api,tk,user_id,msg)
+    driver = GraphDatabase.driver("bolt://localhost:7687", auth=("neo4j", "password"))
     conn = Neo4jConnection(uri, user, password)
-    getDisplayName(conn, user_id)
+    #getDisplayName(conn, user_id)
     node_label = "user"
     property_name = "userID"
     variable_value = user_id
@@ -244,10 +247,30 @@ def check_user_id(line_bot_api,tk,user_id,msg):
         #check if the property userID exits
         exists = conn.check_property(node_label, property_name, variable_value)
         if exists:
-            #print("User ID exit in neo4j")
+            #print("User ID exit in neo4j")i
+            
+            display_node(line_bot_api,tk,user_id,msg)
+        else:
+            create_user_node(driver,variable_value)
+            getDisplayName(conn, user_id)
             display_node(line_bot_api,tk,user_id,msg)
     else:
-        display_node(line_bot_api,tk,user_id,msg)
+        exists = conn.check_property(node_label, property_name, variable_value)
+        if exists:
+            
+            display_node(line_bot_api,tk,user_id,msg)
+        else:
+            create_user_node(driver,variable_value)
+            getDisplayName(conn, user_id)
+            display_node(line_bot_api,tk,user_id,msg)
+
+def create_user_node(driver,variable_value):
+    query = '''
+        CREATE (n:user {nodeID:0,dayStep:1,userID : $userID})
+    '''
+    parameters = {"userID": variable_value}
+    with driver.session() as session:
+        session.run(query, parameters)
 
 def return_message(line_bot_api,tk,user_id,msg):
     if(msg == "Hello"):
@@ -427,9 +450,17 @@ def update_user_score(conn, user_id, node_id, msg, question_tag):
         WHERE n.userID = $user_id
         SET n.{dayScore} = coalesce(n.{dayScore}, 0) + 1
     '''
+    query2 = f'''
+        MATCH (n:user)
+        WHERE n.userID = $user_id
+        SET n.{dayScore} = coalesce(n.{dayScore}, 0) + 0
+    '''
     isCorrect = check_is_correct(conn, node_id, msg)
+    
     if isCorrect:
         conn.query(query, parameters={'user_id': user_id})
+    else:
+        conn.query(query2, parameters={'user_id': user_id})
 
 
 def check_is_correct(conn,  node_id, msg):
