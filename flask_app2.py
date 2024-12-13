@@ -293,10 +293,11 @@ def display_node(line_bot_api, tk, user_id, msg):
         node_var = fetch_node_variable(conn, node_id)
         question_tag = fetch_question_rel(conn, node_id)
         final_score = fetch_show_score_rel(conn, user_id, node_id, question_tag)
-        
+        showAnswer = False 
         wrongAnswers = fetch_answer(conn,user_id, node_id)
-        showAnswer = fetch_answer_rel(line_bot_api,tk,conn, node_id, wrongAnswers,user_id)
-        print(wrongAnswer)
+        if wrongAnswers:
+            showAnswer = traverse_nodes(line_bot_api,tk,conn,wrongAnswers,node_id,user_id)
+        print(wrongAnswers)
         #print(f"final score1 is {final_score}")
         if msg != "Hello":
             if node_var:
@@ -304,7 +305,7 @@ def display_node(line_bot_api, tk, user_id, msg):
             if question_tag:
                 update_user_score(conn,user_id, node_id, msg, question_tag)
                 
-
+            print(f"""showAnser is {showAnswer}""")
             if final_score:
                 node_id = final_score
             elif showAnswer:
@@ -313,7 +314,8 @@ def display_node(line_bot_api, tk, user_id, msg):
                 node_id = fetch_next_node(conn, node_id, msg,day_step) or node_id
 
         update_user_progress(conn, user_id, node_id, day_step, node_step, question_tag)
-        send_node_info(line_bot_api, tk, conn, node_id, node_step, day_step,user_id)
+        if showAnswer != False:
+            send_node_info(line_bot_api, tk, conn, node_id, node_step, day_step,user_id)
     else:
         print("No node data found")
 
@@ -370,35 +372,43 @@ def fetch_answer_rel(line_bot_api,tk,conn, node_id, wrongAnswers,user_id):
         RETURN r.number AS number
     '''
     with conn._driver.session() as session:
-        result = session.run(query, parameters={'node_id': current_node_id})
+        result = session.run(query, parameters={'node_id': node_id})
         record = result.single()
         element = record["number"] if record else None
         
         traverse_nodes(line_bot_api,tk,conn,wrongAnswers,node_id,user_id)
     
 
-def traverse_nodes(line_bot_api,tk,conn,wrongAnswers, node_id, user_id,index=0):
+def traverse_nodes(line_bot_api,tk,conn,wrongAnswers, node_id, user_id,index=0,messages= []):
     if index >= len(wrongAnswers):
-        return
+        print(f'''messages are {messages}''')
+        line_bot_api.reply_message(tk, messages)
+        return node_id
     if wrongAnswers[index] == 0:
         isFalse = True
     if wrongAnswers[index] == 1:
         isFalse = False
+    #print(f'''isFalse is {isFalse}''')
     query = f'''
         MATCH (a)-[r:ANSWER]->(b)
         WHERE id(a) = $node_id and r.isFalse = $isFalse
-        RETURN id(b) as node_id
+        RETURN id(b) as node_id, b.photo as photo
         ORDER BY r.number ASC
         LIMIT 1
     '''
     with conn._driver.session() as session:
-        result = session.run(query2, parameters={'node_id': node_id, 'isFalse': isFalse})
+        result = session.run(query, parameters={'node_id': node_id, 'isFalse': isFalse})
         record = result.single()
         if record:
-            print(f"Current Node: {node_id}, Next Node: {record['nextNode']}")
+            print(f"Current Node: {node_id}, Next Node: {record['node_id']}")
             node_id = record["node_id"]
-            send_node_info(line_bot_api, tk, conn, node_id, 1, 1,user_id)
-            traverse_nodes(line_bot_api,tk,conn,wrongAnswers, node_id, user_id, index + 1)
+            photo = record["photo"]
+            
+            if photo:
+                messages.append(ImageSendMessage(original_content_url=photo, preview_image_url=photo))
+            
+            
+    return traverse_nodes(line_bot_api,tk,conn,wrongAnswers, node_id, user_id, index + 1,messages)
 
     #traverse_nodes(conn,wrongAnswers,node_id, index +1)
 
@@ -411,7 +421,7 @@ def fetch_answer(conn, user_id,node_id):
     with conn._driver.session() as session:
         result = session.run(query, parameters={'user_id': user_id})
         wrong_answers_record = result.single()
-        return wrong_answers_record["wrong"] if wrong_answers_record else None
+        return wrong_answers_record["wrong"] if wrong_answers_record else False
 
 def fetch_next_node(conn, current_node_id, msg, day_step):
     isEnd = check_end_node(conn, current_node_id)
@@ -541,7 +551,7 @@ def send_node_info(line_bot_api, tk, conn, node_id, node_step, day_step,user_id)
     if entity_data:
         entity_data = replace_text_with_variable(conn,user_id,entity_data)
         send_messages(line_bot_api, tk, entity_data)
-
+         
 
 def fetch_entity_data(conn, node_id, node_step):
     query = '''
