@@ -295,9 +295,10 @@ def display_node(line_bot_api, tk, user_id, msg):
         final_score = fetch_show_score_rel(conn, user_id, node_id, question_tag)
         showAnswer = False 
         wrongAnswers = fetch_answer(conn,user_id, node_id)
-        if wrongAnswers:
-            showAnswer = traverse_nodes(line_bot_api,tk,conn,wrongAnswers,node_id,user_id)
-        print(wrongAnswers)
+        #isAnswerRel = fetch_answer_rel(conn, node_id)
+        #if wrongAnswers:
+         #   showAnswer = traverse_nodes(line_bot_api,tk,conn,wrongAnswers,node_id,user_id)
+        #print(wrongAnswers)
         #print(f"final score1 is {final_score}")
         if msg != "Hello":
             if node_var:
@@ -313,9 +314,12 @@ def display_node(line_bot_api, tk, user_id, msg):
             else:
                 node_id = fetch_next_node(conn, node_id, msg,day_step) or node_id
 
+        isAnswerRel = fetch_answer_rel(conn, node_id)
         update_user_progress(conn, user_id, node_id, day_step, node_step, question_tag)
-        if showAnswer != False:
-            send_node_info(line_bot_api, tk, conn, node_id, node_step, day_step,user_id)
+        #if showAnswer == False:
+        send_node_info(line_bot_api, tk, conn, node_id, node_step, day_step,user_id)
+        if isAnswerRel :
+            x = traverse_nodes(line_bot_api,tk,conn,wrongAnswers,node_id,user_id)
     else:
         print("No node data found")
 
@@ -365,7 +369,7 @@ def fetch_question_rel(conn, current_node_id):
         record = result.single()
         return record["label"] if record else None
 
-def fetch_answer_rel(line_bot_api,tk,conn, node_id, wrongAnswers,user_id):
+def fetch_answer_rel(conn, node_id):
     query = f'''
         MATCH (a)-[r:ANSWER]->(b)
         WHERE id(a) = $node_id 
@@ -375,15 +379,17 @@ def fetch_answer_rel(line_bot_api,tk,conn, node_id, wrongAnswers,user_id):
         result = session.run(query, parameters={'node_id': node_id})
         record = result.single()
         element = record["number"] if record else None
+        return element
         
-        traverse_nodes(line_bot_api,tk,conn,wrongAnswers,node_id,user_id)
     
 
 def traverse_nodes(line_bot_api,tk,conn,wrongAnswers, node_id, user_id,index=0,messages= []):
     if index >= len(wrongAnswers):
         print(f'''messages are {messages}''')
-        line_bot_api.reply_message(tk, messages)
-        return node_id
+        if messages: 
+            line_bot_api.reply_message(tk, messages)
+            return node_id
+        return None
     if wrongAnswers[index] == 0:
         isFalse = True
     if wrongAnswers[index] == 1:
