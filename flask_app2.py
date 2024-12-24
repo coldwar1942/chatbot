@@ -320,6 +320,11 @@ def display_node(line_bot_api, tk, user_id, msg):
         send_node_info(line_bot_api, tk, conn, node_id, node_step, day_step,user_id)
         if isAnswerRel :
             x = traverse_nodes(line_bot_api,tk,conn,wrongAnswers,node_id,user_id)
+            print(x)
+            #node_id = x
+            #update_user_progress(conn, user_id, node_id, day_step, node_step, question_tag)
+            #send_node_info(line_bot_api, tk, conn, node_id, node_step, day_step,user_id)
+
     else:
         print("No node data found")
 
@@ -384,12 +389,37 @@ def fetch_answer_rel(conn, node_id):
     
 
 def traverse_nodes(line_bot_api,tk,conn,wrongAnswers, node_id, user_id,index=0,messages= []):
+    query2 = f'''
+        MATCH (a)-[r:NEXT]->(b)
+        WHERE id(a) = $node_id
+        RETURN id(b) as node_id,b.name as name,r.choice as choice,r.name as quickreply
+    '''
+    entity = {"name": None, "name2": None, "photo": None,"quickreply":None, "choices": []}
     if index >= len(wrongAnswers):
         print(f'''messages are {messages}''')
+        with conn._driver.session() as session:
+            result = session.run(query2, parameters={'node_id': node_id})
+            record = result.single()
+            if record:
+                node_id = record["node_id"]
+                entity["name"] = record.get("name", entity["name"]).strip() if record.get("name") else entity["name"]
+                entity["quickreply"] = record.get("quickreply", entity["quickreply"]).strip()
+                entity["choices"].append(record["choice"])
+                #if photo:
+                 #   messages.append(ImageSendMessage(original_content_url=photo, preview_image_url=photo))
+                if entity["name"]:
+                    messages.append(TextSendMessage(text=entity["name"]))
+                if entity["quickreply"] is not None:
+                    quick_reply_buttons = [QuickReplyButton(action=MessageAction(label=c, text=c)) for c in entity["choices"] if c.strip()]
+                    if quick_reply_buttons:
+                        quick_reply = QuickReply(items=quick_reply_buttons)
+                        messages.append(TextSendMessage(text=entity["quickreply"], quick_reply=quick_reply))
+
+                 
         if messages: 
             line_bot_api.reply_message(tk, messages)
-            return node_id
-        return None
+        return node_id 
+        
     if wrongAnswers[index] == 0:
         isFalse = True
     if wrongAnswers[index] == 1:
@@ -397,13 +427,25 @@ def traverse_nodes(line_bot_api,tk,conn,wrongAnswers, node_id, user_id,index=0,m
     #print(f'''isFalse is {isFalse}''')
     query = f'''
         MATCH (a)-[r:ANSWER]->(b)
-        WHERE id(a) = $node_id and r.isFalse = $isFalse
+        WHERE id(a) = $node_id and r.isFalse = $isFalse and r.number = $number
         RETURN id(b) as node_id, b.photo as photo
         ORDER BY r.number ASC
         LIMIT 1
     '''
+    query2 = f'''
+        MATCH (a)-[r:NEXT]->(b)
+        WHERE id(a) = $node_id
+        RETURN id(b) as node_id
+    '''
+    
     with conn._driver.session() as session:
-        result = session.run(query, parameters={'node_id': node_id, 'isFalse': isFalse})
+        #if index >= len(wrongAnswers):
+         #   result = session.run(query2, parameters={'node_id': node_id})
+          #  if messages:
+           #     line_bot_api.reply_message(tk, messages)
+            
+        #else:
+        result = session.run(query, parameters={'node_id': node_id, 'isFalse': isFalse, 'number':index+1})
         record = result.single()
         if record:
             print(f"Current Node: {node_id}, Next Node: {record['node_id']}")
@@ -412,7 +454,8 @@ def traverse_nodes(line_bot_api,tk,conn,wrongAnswers, node_id, user_id,index=0,m
             
             if photo:
                 messages.append(ImageSendMessage(original_content_url=photo, preview_image_url=photo))
-            
+       # if index >= len(wrongAnswers):
+         #   return node_id
             
     return traverse_nodes(line_bot_api,tk,conn,wrongAnswers, node_id, user_id, index + 1,messages)
 
@@ -437,9 +480,14 @@ def fetch_next_node(conn, current_node_id, msg, day_step):
         query = f'''
             MATCH (a:{node_label})
             WHERE id(a) = $node_id  
-            OPTIONAL MATCH (a:{node_label})-[r:NEXT]->(b:{node_label})
-            WHERE r.choice = $msg OR r.choice IS NULL OR r.choice = ""
-            RETURN id(b) AS node_id
+            OPTIONAL MATCH (a)-[r1:SCORE]->(b1:{node_label})
+            OPTIONAL MATCH (a:{node_label})-[r2:NEXT]->(b2:{node_label})
+            WHERE r2.choice = $msg OR r2.choice IS NULL OR r2.choice = ""
+            RETURN 
+                CASE
+                    WHEN b1 IS NOT NULL THEN id(b1)
+                    ELSE id(b2)
+                END AS node_id
         '''
     else:
         #day_step = day_step + 1
