@@ -17,9 +17,12 @@ from linebot.v3.webhooks import (
     MessageEvent,
     TextMessageContent
 )
-
+import cv2
+from PIL import Image
 from linebot import LineBotApi
-
+from google.oauth2.service_account import Credentials
+from googleapiclient.http import MediaFileUpload
+from googleapiclient.discovery import build
 import requests
 import re
 import json
@@ -71,6 +74,24 @@ CHANNEL_ACCESS_TOKEN = 'odz7P1Pu4YPBKfC2UaRJGzhP671gKFSR7DWrCKkBLCZaMUL4vRs62JDF
               #  messages=[TextMessage(text=event.message.text)]
             #)
        # )
+def upload_to_google_drive(file_path, file_name):
+    credentials = Credentials.from_service_account_file('path/to/credentials.json')
+    service = build('drive', 'v3', credentials=credentials)
+
+    file_metadata = {'name': file_name, 'parents': ['your_folder_id']}
+    media = MediaFileUpload(file_path, mimetype='image/jpeg')
+    file = service.files().create(body=file_metadata, media_body=media, fields='id').execute()
+
+    file_id = file.get('id')
+    service.permissions().create(
+            fileId=file_id,
+            body={'type': 'anyone', 'role': 'reader'}
+            ).execute()
+
+    return f"https://drive.google.com/uc?id={file_id}&export=download"
+
+
+
 class Neo4jConnection:
     def __init__(self, uri, user, password):
         self._driver = GraphDatabase.driver(uri, auth=(user, password))            
@@ -205,18 +226,81 @@ def linebot():
         handler = WebhookHandler(secret)
         signature = request.headers['X-Line-Signature']
         handler.handle(body, signature)
-        msg = json_data['events'][0]['message']['text']
+        msg_type = json_data['events'][0]['message']['type']
+        #if msg_type == 'text':
+        #msg = json_data['events'][0]['message']['text']
+    
         tk = json_data['events'][0]['replyToken']
         user_id = json_data['events'][0]['source']['userId']
+        if msg_type == 'text':
+            msg = json_data['events'][0]['message']['text']
+            reply_msg(line_bot_api, tk, user_id, msg)
+        elif msg_type == 'image':
+            message_id = json_data['events'][0]['message']['id']
+            reply_msg(line_bot_api, tk, user_id, msg)
+            f'''message_id = json_data['events'][0]['message']['id']
+            content = line_bot_api.get_message_content(message_id)
+            file_path = f"static/image_{message_id}.jpg"
+            with open(file_path, "wb") as f:
+                for chunk in content.iter_content():
+                    f.write(chunk)
+            image_path = f"output/image_{message_id}.jpg"
+            #image_path2 = f"output2/image_{message_id}.jpg"
+            crop_image(file_path, image_path, expand_x=40, expand_y=60)
+            overlay_images_resized(image_path, '/home/ecoadmin/workspace/chatbot/Info962.png', file_path, position=(0, 0))
+            #image_url = f"https://10e9-2001-3c8-9009-151-5054-ff-feff-2355.ngrok-free.app/{file_path}"
+            image_url = f"https://10e9-2001-3c8-9009-151-5054-ff-feff-2355.ngrok-free.app/{file_path}"
+            image_message = ImageSendMessage(
+                    original_content_url=image_url,
+                    preview_image_url=image_url
+            )
+            line_bot_api.reply_message(tk, image_message)'''
+        else:
+            line_bot_api.reply_message(tk, TextSendMessage(text="ข้อความนี้ยังไม่รองรับ"))
         #msg_reply = reply_msg(msg,user_id)
         #line_bot_api.reply_message(tk,TextSendMessage(text=msg_reply[0],quick_reply=msg_reply[1]))                             
-        reply_msg(line_bot_api,tk,user_id,msg)
+        #reply_msg(line_bot_api,tk,user_id,msg)
 
       #  print(msg, tk)
         print("user_id",user_id)
     except Exception as e:
         print(e) 
     return 'OK'
+
+def crop_image(image_path, output_path, expand_x=20, expand_y=40):
+    image = cv2.imread(image_path)
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
+    faces = face_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5, minSize=(30, 30))
+    if len(faces) > 0:
+        (x, y, w, h) = faces[0]
+        x = max(0, x - expand_x)
+        y = max(0, y - expand_y)
+        w = min(image.shape[1] - x, w + 2 * expand_x)
+        h = min(image.shape[0] - y, h + 2 * expand_y)
+        image_with_face = image.copy()
+        cv2.rectangle(image_with_face, (x, y), (x + w, y + h), (0, 255, 0), 2)
+        cropped_face = image[y:y + h, x:x + w]
+        cv2.imwrite(output_path, cropped_face)
+        cv2.imwrite(output_path, cropped_face)
+    else:
+        print("No faces detected.")
+
+    
+
+def overlay_images_resized(background_path, overlay_path, output_path, position=(0, 0)):
+    background = Image.open(background_path).convert("RGBA")
+    bg_width, bg_height = background.size
+    overlay = Image.open(overlay_path).convert("RGBA")
+    overlay_width, overlay_height = overlay.size
+    scale = min(bg_width / overlay_width, bg_height / overlay_height)
+    new_width = int(overlay_width * scale)
+    new_height = int(overlay_height * scale)
+    overlay_resized = overlay.resize((new_width, new_height), Image.Resampling.LANCZOS)
+    position = ((bg_width - new_width) // 2, (bg_height - new_height) // 2)
+    background.paste(overlay_resized, position, overlay_resized)
+    background = background.convert("RGB")
+    background.save(output_path)
 
 
 def reply_msg(line_bot_api,tk,user_id,msg):
@@ -291,10 +375,12 @@ def display_node(line_bot_api, tk, user_id, msg):
     if node_data:
         node_id, day_step, node_step = node_data['nodeID'], node_data['dayStep'], node_data['nodeStep'] 
         node_var = fetch_node_variable(conn, node_id)
+        node_image = fetch_node_image(conn, node_id)
         question_tag = fetch_question_rel(conn, node_id)
-        final_score = fetch_show_score_rel(conn, user_id, node_id, question_tag)
+        print(f"questiontag is {question_tag}")
+        final_score = fetch_show_score_rel(conn, user_id, node_id, question_tag,day_step)
         showAnswer = False 
-        wrongAnswers = fetch_answer(conn,user_id, node_id)
+        wrongAnswers = fetch_answer(conn,user_id, node_id,question_tag,day_step)
         #isAnswerRel = fetch_answer_rel(conn, node_id)
         #if wrongAnswers:
          #   showAnswer = traverse_nodes(line_bot_api,tk,conn,wrongAnswers,node_id,user_id)
@@ -303,6 +389,8 @@ def display_node(line_bot_api, tk, user_id, msg):
         if msg != "Hello":
             if node_var:
                 update_user_variable(conn,user_id,node_var,msg)
+            if node_image:
+                update_user_image(conn,user_id, node_image, msg)
             if question_tag:
                 update_user_score(conn,user_id, node_id, msg, question_tag)
                 
@@ -320,6 +408,8 @@ def display_node(line_bot_api, tk, user_id, msg):
         send_node_info(line_bot_api, tk, conn, node_id, node_step, day_step,user_id)
         if isAnswerRel :
             x = traverse_nodes(line_bot_api,tk,conn,wrongAnswers,node_id,user_id)
+            node_id = x
+            update_user_progress(conn, user_id, node_id, day_step, node_step, question_tag)
             print(x)
             #node_id = x
             #update_user_progress(conn, user_id, node_id, day_step, node_step, question_tag)
@@ -363,6 +453,17 @@ def fetch_node_variable(conn, current_node_id):
         record = result.single() 
         return record["node_var"] if record else None
 
+def fetch_node_image(conn, current_node_id):
+    query = '''
+        MATCH (a)-[r:NEXT]->(b)
+        WHERE id(a) = $node_id
+        RETURN a.playerimage AS node_image
+    '''
+    with conn._driver.session() as session:
+        result = session.run(query, parameters={'node_id': current_node_id})
+        record = result.single()
+        return record["node_image"] if record else None
+
 def fetch_question_rel(conn, current_node_id):
     query= '''
         MATCH (a)-[r:NEXT]->(b)
@@ -388,7 +489,9 @@ def fetch_answer_rel(conn, node_id):
         
     
 
-def traverse_nodes(line_bot_api,tk,conn,wrongAnswers, node_id, user_id,index=0,messages= []):
+def traverse_nodes(line_bot_api,tk,conn,wrongAnswers, node_id, user_id,index=0,messages= None):
+    if messages is None:
+        messages = []
     query2 = f'''
         MATCH (a)-[r:NEXT]->(b)
         WHERE id(a) = $node_id
@@ -405,10 +508,11 @@ def traverse_nodes(line_bot_api,tk,conn,wrongAnswers, node_id, user_id,index=0,m
                 entity["name"] = record.get("name", entity["name"]).strip() if record.get("name") else entity["name"]
                 entity["quickreply"] = record.get("quickreply", entity["quickreply"]).strip()
                 entity["choices"].append(record["choice"])
-                #if photo:
-                 #   messages.append(ImageSendMessage(original_content_url=photo, preview_image_url=photo))
-                if entity["name"]:
-                    messages.append(TextSendMessage(text=entity["name"]))
+                entity["photo"] = record.get("photo", entity["photo"]).strip() if record.get("photo") else entity["photo"]
+                #if entity["photo"]:
+                 #   messages.append(ImageSendMessage(original_content_url=entity["photo"], preview_image_url=entity["photo"]))
+                #if entity["name"]:
+                 #   messages.append(TextSendMessage(text=entity["name"]))
                 if entity["quickreply"] is not None:
                     quick_reply_buttons = [QuickReplyButton(action=MessageAction(label=c, text=c)) for c in entity["choices"] if c.strip()]
                     if quick_reply_buttons:
@@ -416,8 +520,10 @@ def traverse_nodes(line_bot_api,tk,conn,wrongAnswers, node_id, user_id,index=0,m
                         messages.append(TextSendMessage(text=entity["quickreply"], quick_reply=quick_reply))
 
                  
-        if messages: 
-            line_bot_api.reply_message(tk, messages)
+            if messages:
+                #for i in range(0, len(messages), 5):
+                 #   batch = messages[i:i + 5]
+                line_bot_api.reply_message(tk, messages)
         return node_id 
         
     if wrongAnswers[index] == 0:
@@ -461,11 +567,12 @@ def traverse_nodes(line_bot_api,tk,conn,wrongAnswers, node_id, user_id,index=0,m
 
     #traverse_nodes(conn,wrongAnswers,node_id, index +1)
 
-def fetch_answer(conn, user_id,node_id):
+def fetch_answer(conn, user_id,node_id,question_tag,day_step):
+    dayWrong = f"d{day_step}Wrong"
     query = f'''
         MATCH (n:user)
         WHERE n.userID = $user_id
-        RETURN n.d9Wrong AS wrong
+        RETURN n.{dayWrong} AS wrong
     '''
     with conn._driver.session() as session:
         result = session.run(query, parameters={'user_id': user_id})
@@ -515,12 +622,12 @@ def check_end_node(conn, current_node_id):
         record = result.single()  
         return record["result"] if record else False
 
-def fetch_show_score_rel(conn, user_id,current_node_id, question_tag):
-    dayScore = f"{question_tag}Score"
+def fetch_show_score_rel(conn, user_id,current_node_id, question_tag,day_step):
+    dayScore = f"d{day_step}Score"
     query = f'''
         MATCH (n:user)
         WHERE n.userID = $user_id
-        RETURN n.d9Score as score
+        RETURN n.{dayScore} as score
 
     '''
     
