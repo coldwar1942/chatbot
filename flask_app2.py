@@ -18,7 +18,7 @@ from linebot.v3.webhooks import (
     TextMessageContent
 )
 import cv2
-from PIL import Image
+import numpy as np
 from linebot import LineBotApi
 from google.oauth2.service_account import Credentials
 from googleapiclient.http import MediaFileUpload
@@ -29,7 +29,7 @@ import json
 from flask import abort
 from linebot.models import TextSendMessage, QuickReply, QuickReplyButton, MessageAction
 from linebot.models import *
-
+from PIL import Image, ImageDraw, ImageFont
 app = Flask(__name__)
 
 uri = "neo4j:172.30.81.113:7687"
@@ -237,7 +237,7 @@ def linebot():
             reply_msg(line_bot_api, tk, user_id, msg)
         elif msg_type == 'image':
             message_id = json_data['events'][0]['message']['id']
-            reply_msg(line_bot_api, tk, user_id, msg)
+            reply_msg(line_bot_api, tk, user_id, message_id)
             f'''message_id = json_data['events'][0]['message']['id']
             content = line_bot_api.get_message_content(message_id)
             file_path = f"static/image_{message_id}.jpg"
@@ -267,7 +267,7 @@ def linebot():
         print(e) 
     return 'OK'
 
-def crop_image(image_path, output_path, expand_x=20, expand_y=40):
+def crop_image(image_path, output_path, expand_x=20, expand_y=20):
     image = cv2.imread(image_path)
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
@@ -278,18 +278,60 @@ def crop_image(image_path, output_path, expand_x=20, expand_y=40):
         y = max(0, y - expand_y)
         w = min(image.shape[1] - x, w + 2 * expand_x)
         h = min(image.shape[0] - y, h + 2 * expand_y)
-        image_with_face = image.copy()
-        cv2.rectangle(image_with_face, (x, y), (x + w, y + h), (0, 255, 0), 2)
         cropped_face = image[y:y + h, x:x + w]
+        mask = np.zeros((h, w), dtype=np.uint8)
+        center = (w // 2, h // 2)
+        radius = min(w, h) // 2
+        cv2.circle(mask, center, radius, 255, -1)
+        circular_cropped = cv2.bitwise_and(cropped_face, cropped_face, mask=mask)
+        circular_cropped_with_alpha = cv2.cvtColor(circular_cropped, cv2.COLOR_BGR2BGRA)
+        circular_cropped_with_alpha[:, :, 3] = mask
+        cv2.imwrite(output_path, circular_cropped_with_alpha)
+
+        f'''image_with_face = image.copy()
+        cv2.rectangle(image_with_face, (x, y), (x + w, y + h), (0, 255, 0), 2)
+        cv2.imwrite(output_path, circular_cropped_with_alphacropped_face = image[y:y + h, x:x + w]
         cv2.imwrite(output_path, cropped_face)
-        cv2.imwrite(output_path, cropped_face)
+        cv2.imwrite(output_path, cropped_face)'''
     else:
         print("No faces detected.")
 
     
 
-def overlay_images_resized(background_path, overlay_path, output_path, position=(0, 0)):
-    background = Image.open(background_path).convert("RGBA")
+def overlay_images_resized(name,background_path, overlay_path, output_path, position=(0, 0)):
+    image_path = overlay_path
+    target_image = cv2.imread(image_path)
+    replacement_image = cv2.imread(background_path)
+    hsv_image = cv2.cvtColor(target_image, cv2.COLOR_BGR2HSV)
+    lower_white = np.array([0, 0, 200])
+    upper_white = np.array([180, 30, 255])
+    mask = cv2.inRange(hsv_image, lower_white, upper_white)
+    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    if contours:
+        c = max(contours, key=cv2.contourArea)
+        x, y, w, h = cv2.boundingRect(c)
+        resized_image = cv2.resize(replacement_image, (w, h))
+        mask_circle = np.zeros((h, w), dtype=np.uint8)
+        center = (w // 2, h // 2)
+        radius = min(w, h) // 2
+        cv2.circle(mask_circle, center, radius, 255, -1)
+        mask_inverse = cv2.bitwise_not(mask_circle)
+        background = cv2.bitwise_and(target_image[y:y+h, x:x+w], target_image[y:y+h, x:x+w], mask=mask_inverse)
+        foreground = cv2.bitwise_and(resized_image, resized_image, mask=mask_circle)
+        combined = cv2.add(background, foreground)
+        target_image[y:y+h, x:x+w] = combined
+        image_pil = Image.fromarray(cv2.cvtColor(target_image, cv2.COLOR_BGR2RGB))
+        draw = ImageDraw.Draw(image_pil)
+        font_path = "/home/ecoadmin/workspace/chatbot/THSarabun.ttf"
+        font = ImageFont.truetype(font_path, size=100)
+        text = f"น้องง{name}"
+        position = (600, 1085)
+        color = (0, 0, 0)
+        draw.text(position, text, font=font, fill=color)
+        final_image = cv2.cvtColor(np.array(image_pil), cv2.COLOR_RGB2BGR)
+        cv2.imwrite(output_path, final_image)
+    
+        f"""  background = Image.open(background_path).convert("RGBA")
     bg_width, bg_height = background.size
     overlay = Image.open(overlay_path).convert("RGBA")
     overlay_width, overlay_height = overlay.size
@@ -300,7 +342,7 @@ def overlay_images_resized(background_path, overlay_path, output_path, position=
     position = ((bg_width - new_width) // 2, (bg_height - new_height) // 2)
     background.paste(overlay_resized, position, overlay_resized)
     background = background.convert("RGB")
-    background.save(output_path)
+    background.save(output_path)"""
 
 
 def reply_msg(line_bot_api,tk,user_id,msg):
@@ -378,7 +420,7 @@ def display_node(line_bot_api, tk, user_id, msg):
         node_image = fetch_node_image(conn, node_id)
         question_tag = fetch_question_rel(conn, node_id)
         print(f"questiontag is {question_tag}")
-        final_score = fetch_show_score_rel(conn, user_id, node_id, question_tag,day_step)
+        final_score = fetch_show_score_rel(conn,user_id, node_id, question_tag,day_step)
         showAnswer = False 
         wrongAnswers = fetch_answer(conn,user_id, node_id,question_tag,day_step)
         #isAnswerRel = fetch_answer_rel(conn, node_id)
@@ -390,7 +432,10 @@ def display_node(line_bot_api, tk, user_id, msg):
             if node_var:
                 update_user_variable(conn,user_id,node_var,msg)
             if node_image:
-                update_user_image(conn,user_id, node_image, msg)
+                message_id = msg
+                manage_image(conn,tk,user_id,message_id)
+                #update_user_image(conn,user_id, image_url)
+                
             if question_tag:
                 update_user_score(conn,user_id, node_id, msg, question_tag)
                 
@@ -409,6 +454,7 @@ def display_node(line_bot_api, tk, user_id, msg):
         if isAnswerRel :
             x = traverse_nodes(line_bot_api,tk,conn,wrongAnswers,node_id,user_id)
             node_id = x
+            print(f"x nodeid is {x}")
             update_user_progress(conn, user_id, node_id, day_step, node_step, question_tag)
             print(x)
             #node_id = x
@@ -417,6 +463,34 @@ def display_node(line_bot_api, tk, user_id, msg):
 
     else:
         print("No node data found")
+
+def manage_image(conn,tk,user_id,message_id):
+    query = f'''
+        MATCH (n:user)
+        WHERE n.userID = $user_id
+        RETURN n.name AS name
+    '''
+    with conn._driver.session() as session:
+        result = session.run(query, parameters={'user_id': user_id})
+        name_record = result.single()
+        name = name_record["name"]
+    content = line_bot_api.get_message_content(message_id)
+    file_path = f"static/image_{message_id}.jpg"
+    with open(file_path, "wb") as f:
+        for chunk in content.iter_content():
+            f.write(chunk)
+    image_path = f"output/image_{message_id}.jpg"
+    crop_image(file_path, image_path, expand_x=40, expand_y=60)
+    overlay_images_resized(name,image_path, '/home/ecoadmin/workspace/chatbot/Info964.png', file_path, position=(0, 0))
+    image_url = f"https://10e9-2001-3c8-9009-151-5054-ff-feff-2355.ngrok-free.app/{file_path}"
+    image_message = ImageSendMessage(
+            original_content_url=image_url,
+            preview_image_url=image_url
+    )
+    line_bot_api.reply_message(tk, image_message)
+    
+
+
 
 def getDisplayName(conn, user_id):
     query = '''
@@ -504,10 +578,12 @@ def traverse_nodes(line_bot_api,tk,conn,wrongAnswers, node_id, user_id,index=0,m
             result = session.run(query2, parameters={'node_id': node_id})
             record = result.single()
             if record:
-                node_id = record["node_id"]
+                ##node_id = record["node_id"]
                 entity["name"] = record.get("name", entity["name"]).strip() if record.get("name") else entity["name"]
-                entity["quickreply"] = record.get("quickreply", entity["quickreply"]).strip()
-                entity["choices"].append(record["choice"])
+                if record.get("quickreply") is not None:
+                    entity["quickreply"] = record.get("quickreply", entity["quickreply"]).strip()
+                if record.get("choice") is not None:
+                    entity["choices"].append(record["choice"])
                 entity["photo"] = record.get("photo", entity["photo"]).strip() if record.get("photo") else entity["photo"]
                 #if entity["photo"]:
                  #   messages.append(ImageSendMessage(original_content_url=entity["photo"], preview_image_url=entity["photo"]))
@@ -793,7 +869,7 @@ def send_messages(line_bot_api, tk, entity_data):
         
         line_bot_api.reply_message(tk, messages)
     else:
-        print("No valid messages to send")
+        print("No valid messages to send2222")
 
 def send_video_message(user_id, video_url, thumbnail_url):
     video_message = VideoSendMessage(
