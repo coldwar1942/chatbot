@@ -417,6 +417,7 @@ def display_node(line_bot_api, tk, user_id, msg):
     if node_data:
         node_id, day_step, node_step = node_data['nodeID'], node_data['dayStep'], node_data['nodeStep'] 
         node_var = fetch_node_variable(conn, node_id)
+        node_rel_var = fetch_rel_node_variable(conn, node_id)
         node_image = fetch_node_image(conn, node_id)
         question_tag = fetch_question_rel(conn, node_id)
         print(f"questiontag is {question_tag}")
@@ -431,6 +432,8 @@ def display_node(line_bot_api, tk, user_id, msg):
         if msg != "Hello":
             if node_var:
                 update_user_variable(conn,user_id,node_var,msg)
+            if node_rel_var:
+                update_user_rel_variable(conn, user_id, node_rel_var , node_id, msg)
             if node_image:
                 message_id = msg
                 manage_image(conn,tk,user_id,message_id)
@@ -446,7 +449,7 @@ def display_node(line_bot_api, tk, user_id, msg):
                 node_id = showAnswer
             else:
                 node_id = fetch_next_node(conn, node_id, msg,day_step) or node_id
-
+        
         isAnswerRel = fetch_answer_rel(conn, node_id)
         update_user_progress(conn, user_id, node_id, day_step, node_step, question_tag)
         #if showAnswer == False:
@@ -522,9 +525,21 @@ def fetch_node_variable(conn, current_node_id):
         WHERE id(a) = $node_id
         RETURN a.parameter AS node_var
     '''
+    
     with conn._driver.session() as session:
         result = session.run(query, parameters={'node_id': current_node_id})
         record = result.single() 
+        return record["node_var"] if record else None
+
+def fetch_rel_node_variable(conn, node_id):
+    query = '''
+        MATCH (a)-[r:NEXT]->(b)
+        WHERE id(a) = $node_id
+        RETURN a.rel_parameter AS node_var
+    '''
+    with conn._driver.session() as session:
+        result = session.run(query, parameters={'node_id': node_id})
+        record = result.single()
         return record["node_var"] if record else None
 
 def fetch_node_image(conn, current_node_id):
@@ -748,6 +763,23 @@ def update_user_variable(conn, user_id, node_var, msg):
     '''
     conn.query(query, parameters={'user_id': user_id, 'node_var': node_var, 'msg':msg})
 
+def update_user_rel_variable(conn, user_id, node_rel_var , node_id, msg):
+    query = f'''
+        MATCH (n:user)
+        WHERE n.userID = $user_id
+        SET n.{node_rel_var} = $variable
+    '''
+    query2 = f'''
+        MATCH (a)-[r:NEXT]->(b)
+        WHERE id(a) = $node_id AND r.choice = $msg
+        RETURN r.choice AS choice
+    '''
+    with conn._driver.session() as session:
+        result = session.run(query2, parameters={'node_id': node_id, 'msg': msg})
+        record = result.single()
+        variable = record["choice"]
+    conn.query(query, parameters={'user_id': user_id,  'variable':variable})
+
 def update_user_score(conn, user_id, node_id, msg, question_tag):
     dayScore = f"{question_tag}Score"
     wrongAnswer = f"{question_tag}Wrong"
@@ -784,30 +816,49 @@ def check_is_correct(conn,  node_id, msg):
 
 
 def send_node_info(line_bot_api, tk, conn, node_id, node_step, day_step,user_id):
-    entity_data = fetch_entity_data(conn, node_id, node_step)
+    entity_data = fetch_entity_data(conn, node_id, node_step,user_id)
     if entity_data:
         entity_data = replace_text_with_variable(conn,user_id,entity_data)
         send_messages(line_bot_api, tk, entity_data)
          
 
-def fetch_entity_data(conn, node_id, node_step):
+def fetch_entity_data(conn, node_id, node_step,user_id):
     query = '''
         MATCH (n)
         WHERE id(n) = $node_id
         OPTIONAL MATCH (n)-[r:NEXT]->(m)
         OPTIONAL MATCH (n)-[a:ANSWER]->(m)
-        RETURN n.name as name, n.name2 as name2, n.photo as photo, r.choice as choice,r.name as quickreply, coalesce(n.video, '') as video
+        RETURN n.name as name, n.name2 as name2, n.photo as photo, r.choice as choice,r.name as quickreply, coalesce(n.video, '') as video,n.pic1 as pic1,n.pic2 as pic2,n.pic3 as pic3
+    '''
+    query2 = '''
+        MATCH (n:user)
+        WHERE n.userID = $user_id
+        RETURN n.relDay9 as relVar
     '''
     entity = {"name": None, "name2": None, "photo": None,"quickreply":None, "choices": [],
-              "video":None}
+              "video":None,"relpic":None}
     
     with conn._driver.session() as session:
         result = session.run(query, parameters={'node_id': node_id})
+        result2 = session.run(query2, parameters={'user_id': user_id})
+        for record in result2:
+            relVar = record["relVar"]
         records = list(result)
+        print(f"relVar is {relVar}") 
         if not records:
             print(f"No records found for node_id: {node_id}")
             return None
         for record in records:
+            if relVar == "รูปที่1":
+                entity["relpic"] = record.get("pic1",entity["relpic"]).strip() if record.get("pic1") else entity["relpic"]
+            elif relVar == "รูปที่2":
+                entity["relpic"] = record.get("pic2",entity["relpic"]).strip() if record.get("pic2") else entity["relpic"]
+            elif relVar == "รูปที่3":
+                entity["relpic"] = record.get("pic3",entity["relpic"]).strip() if record.get("pic3") else entity["relpic"]
+        #if not records:
+         #   print(f"No records found for node_id: {node_id}")
+        #    return None
+        #for record in records:
             entity["name"] = record.get("name", entity["name"]).strip() if record.get("name") else entity["name"]
         
             entity["name2"] = record.get("name2", entity["name2"]).strip() if record.get("name2") else entity["name2"]
@@ -848,6 +899,8 @@ def replace_text_with_variable(conn,user_id,entity_data):
 def send_messages(line_bot_api, tk, entity_data):
     print(entity_data["video"])
     messages = []
+    if entity_data["relpic"]:
+        messages.append(ImageSendMessage(original_content_url=entity_data["relpic"], preview_image_url=entity_data["relpic"]))
     if entity_data["name"]:
         messages.append(TextSendMessage(text=entity_data["name"]))
     if entity_data["name2"]:
