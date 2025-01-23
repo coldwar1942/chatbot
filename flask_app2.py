@@ -501,10 +501,10 @@ def display_node(line_bot_api, tk, user_id, msg):
         phase = checkPhase(line_bot_api, tk, conn, user_id)
         count = checkCount(line_bot_api, tk, conn, user_id)
         print(f"count is {count}")
-        if count == 3 or msg == "Yes":
+       # if count == 3 or msg == "Yes":
             #resetCount(conn,line_bot_api, tk, user_id, count)
-            count = checkCount(line_bot_api, tk, conn, user_id)
-            phase = False
+        #    count = checkCount(line_bot_api, tk, conn, user_id)
+         #   phase = False
         #isAnswerRel = fetch_answer_rel(conn, node_id)
         #if wrongAnswers:
          #   showAnswer = traverse_nodes(line_bot_api,tk,conn,wrongAnswers,node_id,user_id)
@@ -534,7 +534,7 @@ def display_node(line_bot_api, tk, user_id, msg):
         isEnd = check_end_node(conn, node_id)
 
         isAnswerRel = fetch_answer_rel(conn, node_id)
-        update_user_progress(conn, user_id, node_id, day_step, node_step, question_tag,isEnd,count,msg)
+        update_user_progress(conn, user_id, node_id, day_step, node_step, question_tag,isEnd,count,msg,tk)
         
 
         #if showAnswer == False:
@@ -550,6 +550,7 @@ def display_node(line_bot_api, tk, user_id, msg):
             update_count(conn,line_bot_api, tk, user_id, count)
             count = checkCount(line_bot_api, tk, conn, user_id)
             update_phase(line_bot_api, tk, conn, user_id,count)
+            
             start_question(line_bot_api, tk, conn, user_id)
             return_message(line_bot_api, tk, user_id, msg)
             #update_count(conn,line_bot_api, tk, user_id, count)
@@ -586,7 +587,7 @@ def update_phase(line_bot_api, tk, conn, user_id,count):
         WHERE n.userID = $user_id
         SET n.phase = false
     """
-    if count < 3:
+    if count <= 3:
         conn.query(query, parameters={'user_id': user_id})
     else:
         conn.query(query2, parameters={'user_id': user_id})
@@ -598,7 +599,10 @@ def update_count(conn,line_bot_api, tk, user_id, count):
         SET n.questionCount = $count
     """
     count = checkCount(line_bot_api, tk, conn, user_id)
-    count = count + 1
+    if count <= 3 :
+        count = count + 1
+    else:
+        count = 0
     conn.query(query, parameters={'user_id': user_id, 'count': count})
 
 
@@ -956,7 +960,7 @@ def fetch_show_score_rel(conn, user_id,current_node_id, question_tag,day_step):
     else:
         return False
 
-def update_user_progress(conn, user_id, node_id, day_step, node_step, question_tag,isEnd,count,msg):
+def update_user_progress(conn, user_id, node_id, day_step, node_step, question_tag,isEnd,count,msg,tk):
     isEnd = check_end_node(conn, node_id)
     count = checkCount(line_bot_api, tk, conn, user_id)
     #dayScore = f"{question_tag}Score"
@@ -965,15 +969,14 @@ def update_user_progress(conn, user_id, node_id, day_step, node_step, question_t
     query = f'''
         MATCH (n:user)
         WHERE n.userID = $user_id
-        SET n.dayStep = $day_step, n.nodeID = $node_id, n.nodeStep = $node_step,
-        n.phase = $phase
+        SET n.dayStep = $day_step, n.nodeID = $node_id, n.nodeStep = $node_step
         
     '''
-    if (isEnd and count > 3) or msg == "Yes":
+    if (isEnd and count >= 3) or msg == "Yes":
         day_step = day_step + 1
         node_step = 1
-        phase = True
-    conn.query(query, parameters={'user_id': user_id, 'day_step': day_step, 'node_id': node_id, 'node_step': node_step,'phase':phase})
+        
+    conn.query(query, parameters={'user_id': user_id, 'day_step': day_step, 'node_id': node_id, 'node_step': node_step})
     
 def update_user_variable(conn, user_id, node_var, msg):
     query = f'''
