@@ -17,6 +17,12 @@ from linebot.v3.webhooks import (
     MessageEvent,
     TextMessageContent
 )
+import pandas as pd
+from sentence_transformers import SentenceTransformer
+import faiss
+import numpy as np
+import json
+import re
 import cv2
 import numpy as np
 from linebot import LineBotApi
@@ -74,6 +80,32 @@ CHANNEL_ACCESS_TOKEN = 'odz7P1Pu4YPBKfC2UaRJGzhP671gKFSR7DWrCKkBLCZaMUL4vRs62JDF
               #  messages=[TextMessage(text=event.message.text)]
             #)
        # )
+
+
+def fetch_question_from_neo4j():
+    query = """
+        MATCH (n:QAM)-[r:ANSWER]->(m:QAM)
+        RETURN n.answer AS answer,n.pic AS pic, m
+        """
+    results = []
+    conn = Neo4jConnection(uri, user, password)
+    with conn._driver.session() as session:
+        result = session.run(query)
+        for record in result:
+            answer = record["answer"]
+            pic = record.get("pic", "default_value")
+ #n_properties = dict(record["n"].items())
+            m_properties = dict(record["m"].items()) # Convert properties to dictionary
+            results.append({
+            "answer": answer,
+            "pic": pic,
+            "questions": m_properties
+            })
+
+    return results
+
+
+
 def upload_to_google_drive(file_path, file_name):
     credentials = Credentials.from_service_account_file('path/to/credentials.json')
     service = build('drive', 'v3', credentials=credentials)
@@ -136,6 +168,46 @@ class Neo4jConnection:
         except Exception as e:
             print(f"Connection failed: {e}")
             return False
+
+results = fetch_question_from_neo4j()
+merged_results = []
+#print(results)
+for item in results:
+ # Extract the answer
+    answer_text = item['answer']
+    pic_url = item.get('pic', None)
+ # Combine all question values into a single string
+ #questions_combined = item.get('question', '')
+    for question_key, question_text in item['questions'].items():
+        merged_results.append({
+            'question': question_text,
+            'answer': answer_text,
+            'pic': pic_url
+            })
+flattened_data = []
+for item in merged_results:
+    if item['answer'] == "":
+        answer = item['pic']
+    else:
+        answer = item['answer']
+    question = item['question']
+    flattened_data.append({'question': str(question), 'answer': str(answer)})
+print("Flattened Data:")
+print(flattened_data)
+
+df = pd.DataFrame(flattened_data, columns=['question', 'answer'])
+# Step 2: Create vectors from the text
+text = df['question']
+#print(text)
+encoder = SentenceTransformer('kornwtp/SCT-model-wangchanberta')
+vectors = encoder.encode(text)
+
+# Step 3: Build a FAISS index from the vectors
+vector_dimension = vectors.shape[1]
+index = faiss.IndexFlatL2(vector_dimension)
+faiss.normalize_L2(vectors)
+index.add(vectors)
+
 def push_line_message(user_id, message_text):
     line_api_url = 'https://api.line.me/v2/bot/message/push'
     headers = {
@@ -424,12 +496,15 @@ def display_node(line_bot_api, tk, user_id, msg):
         final_score = fetch_show_score_rel(conn,user_id, node_id, question_tag,day_step)
         showAnswer = False 
         wrongAnswers = fetch_answer(conn,user_id, node_id,question_tag,day_step)
+        isEnd = False
+        phase = False 
+        phase = checkPhase(line_bot_api, tk, conn, user_id)
         #isAnswerRel = fetch_answer_rel(conn, node_id)
         #if wrongAnswers:
          #   showAnswer = traverse_nodes(line_bot_api,tk,conn,wrongAnswers,node_id,user_id)
         #print(wrongAnswers)
         #print(f"final score1 is {final_score}")
-        if msg != "Hello":
+        if msg != "Hello" and phase == False:
             if node_var:
                 update_user_variable(conn,user_id,node_var,msg)
             if node_rel_var:
@@ -448,12 +523,22 @@ def display_node(line_bot_api, tk, user_id, msg):
             elif showAnswer:
                 node_id = showAnswer
             else:
+                #isEnd = check_end_node(conn, node_id)
                 node_id = fetch_next_node(conn, node_id, msg,day_step) or node_id
-        
+        isEnd = check_end_node(conn, node_id)
+
         isAnswerRel = fetch_answer_rel(conn, node_id)
-        update_user_progress(conn, user_id, node_id, day_step, node_step, question_tag)
+        update_user_progress(conn, user_id, node_id, day_step, node_step, question_tag,isEnd)
         #if showAnswer == False:
-        send_node_info(line_bot_api, tk, conn, node_id, node_step, day_step,user_id)
+        if phase == False:
+            send_node_info(line_bot_api, tk, conn, node_id, node_step, day_step,user_id)
+    
+        if isEnd:
+            
+            start_question(line_bot_api, tk, conn, user_id)
+            return_message(line_bot_api, tk, user_id, msg)
+            
+
         if isAnswerRel :
             x = traverse_nodes(line_bot_api,tk,conn,wrongAnswers,node_id,user_id)
             node_id = x
@@ -466,6 +551,76 @@ def display_node(line_bot_api, tk, user_id, msg):
 
     else:
         print("No node data found")
+
+def checkPhase(line_bot_api, tk, conn, user_id):
+    query = f"""
+    MATCH (n:user)
+    WHERE n.userID = $user_id
+    RETURN n.phase as phase
+    """
+    with conn._driver.session() as session:
+        result = session.run(query, parameters={'user_id': user_id})
+        record = result.single()
+        return record["phase"] if record else False
+
+def start_question(line_bot_api, tk, conn, user_id):
+    query = f'''
+        MATCH (a:Question)
+        WHERE id(a) = 597
+        RETURN a.name AS name
+    '''
+    with conn._driver.session() as session:
+        result = session.run(query)
+        record = result.single()
+        name = record["name"]
+        entity = {"name":None}
+        entity["name"] = record.get("name", entity["name"]).strip() if record.get("name") else entity["name"]
+    
+    messages = []
+    if entity["name"]:
+        messages.append(TextSendMessage(text=entity["name"]))
+    if messages:
+        line_bot_api.push_message(user_id, messages)
+    else:
+        print("No valid messages to send111")
+
+def return_message(line_bot_api, tk, user_id, msg):
+    chk_msg = check_sentence(msg)
+    response = f"Similar to: {chk_msg[0]} Answer: {chk_msg[1]}"
+ 
+    url_pattern = r'https?://[^\s]+'
+    urls = re.findall(url_pattern, response)
+    if urls:
+        image_url = urls[0]
+        image_message = ImageSendMessage(
+            original_content_url=image_url, 
+            preview_image_url=image_url
+            )
+        line_bot_api.reply_message(tk, [TextSendMessage(text=response), image_message])
+    else:
+        line_bot_api.reply_message(tk, TextSendMessage(text=response))
+
+def check_sentence(msg):
+    search_text = msg
+    search_vector = encoder.encode(search_text)
+    _vector = np.array([search_vector])
+    faiss.normalize_L2(_vector)
+    k = index.ntotal  # Number of nearest neighbors to retrieve
+    distances, ann = index.search(_vector, k=k)
+    results = pd.DataFrame({'distances': distances[0], 'ann': ann[0]})
+    labels = df['answer']
+    Ques = df['question']
+    Sentence = labels[ann[0][0]]
+    if distances[0][0] <= 0.5:
+        answer = labels[ann[0][0]]
+        Sentence = Ques[ann[0][0]]
+    else:
+        Sentence = msg
+        answer = msg
+
+    return [Sentence, answer]
+
+
 
 def manage_image(conn,tk,user_id,message_id):
     query = f'''
@@ -705,8 +860,8 @@ def fetch_next_node(conn, current_node_id, msg, day_step):
 def check_end_node(conn, current_node_id):
     query = f'''
         MATCH (a)
-        WHERE id(a) = $node_id AND a.isEnd = true
-        RETURN true AS result
+        WHERE id(a) = $node_id AND coalesce(a.isEnd, false) = true
+        RETURN a.isEnd AS result
     '''
     with conn._driver.session() as session:
         result = session.run(query, parameters={'node_id': current_node_id})
@@ -740,20 +895,23 @@ def fetch_show_score_rel(conn, user_id,current_node_id, question_tag,day_step):
     else:
         return False
 
-def update_user_progress(conn, user_id, node_id, day_step, node_step, question_tag):
+def update_user_progress(conn, user_id, node_id, day_step, node_step, question_tag,isEnd):
     isEnd = check_end_node(conn, node_id)
     #dayScore = f"{question_tag}Score"
     print(isEnd)
+    phase = False
     query = f'''
         MATCH (n:user)
         WHERE n.userID = $user_id
-        SET n.dayStep = $day_step, n.nodeID = $node_id, n.nodeStep = $node_step
+        SET n.dayStep = $day_step, n.nodeID = $node_id, n.nodeStep = $node_step,
+        n.phase = $phase
         
     '''
     if isEnd:
         day_step = day_step + 1
         node_step = 1
-    conn.query(query, parameters={'user_id': user_id, 'day_step': day_step, 'node_id': node_id, 'node_step': node_step})
+        phase = True
+    conn.query(query, parameters={'user_id': user_id, 'day_step': day_step, 'node_id': node_id, 'node_step': node_step,'phase':phase})
     
 def update_user_variable(conn, user_id, node_var, msg):
     query = f'''
