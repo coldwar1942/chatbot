@@ -499,6 +499,12 @@ def display_node(line_bot_api, tk, user_id, msg):
         isEnd = False
         phase = False 
         phase = checkPhase(line_bot_api, tk, conn, user_id)
+        count = checkCount(line_bot_api, tk, conn, user_id)
+        print(f"count is {count}")
+        if count == 3 or msg == "Yes":
+            #resetCount(conn,line_bot_api, tk, user_id, count)
+            count = checkCount(line_bot_api, tk, conn, user_id)
+            phase = False
         #isAnswerRel = fetch_answer_rel(conn, node_id)
         #if wrongAnswers:
          #   showAnswer = traverse_nodes(line_bot_api,tk,conn,wrongAnswers,node_id,user_id)
@@ -528,16 +534,25 @@ def display_node(line_bot_api, tk, user_id, msg):
         isEnd = check_end_node(conn, node_id)
 
         isAnswerRel = fetch_answer_rel(conn, node_id)
-        update_user_progress(conn, user_id, node_id, day_step, node_step, question_tag,isEnd)
+        update_user_progress(conn, user_id, node_id, day_step, node_step, question_tag,isEnd,count,msg)
+        
+
         #if showAnswer == False:
         if phase == False:
             send_node_info(line_bot_api, tk, conn, node_id, node_step, day_step,user_id)
     
         if isEnd:
-            
+            phase = True
+        if count > 3:
+            phase = False
+        if isEnd and phase == True:
+            #if count < 3:
+            update_count(conn,line_bot_api, tk, user_id, count)
+            count = checkCount(line_bot_api, tk, conn, user_id)
+            update_phase(line_bot_api, tk, conn, user_id,count)
             start_question(line_bot_api, tk, conn, user_id)
             return_message(line_bot_api, tk, user_id, msg)
-            
+            #update_count(conn,line_bot_api, tk, user_id, count)
 
         if isAnswerRel :
             x = traverse_nodes(line_bot_api,tk,conn,wrongAnswers,node_id,user_id)
@@ -551,6 +566,52 @@ def display_node(line_bot_api, tk, user_id, msg):
 
     else:
         print("No node data found")
+
+def resetCount(conn,line_bot_api, tk, user_id, count):
+    query = f"""
+        MATCH (n:user)
+        WHERE n.userID = $user_id
+        SET n.questionCount = 0
+    """
+    conn.query(query, parameters={'user_id': user_id})
+
+def update_phase(line_bot_api, tk, conn, user_id,count):
+    query = f"""
+        MATCH (n:user)
+        WHERE n.userID = $user_id
+        SET n.phase = true
+    """
+    query2 = f"""
+        MATCH (n:user)
+        WHERE n.userID = $user_id
+        SET n.phase = false
+    """
+    if count < 3:
+        conn.query(query, parameters={'user_id': user_id})
+    else:
+        conn.query(query2, parameters={'user_id': user_id})
+
+def update_count(conn,line_bot_api, tk, user_id, count):
+    query = f"""
+        MATCH (n:user)
+        WHERE n.userID = $user_id
+        SET n.questionCount = $count
+    """
+    count = checkCount(line_bot_api, tk, conn, user_id)
+    count = count + 1
+    conn.query(query, parameters={'user_id': user_id, 'count': count})
+
+
+def checkCount(line_bot_api, tk, conn, user_id):
+    query = f"""
+        MATCH (n:user)
+        WHERE n.userID = $user_id
+        RETURN n.questionCount as count
+    """
+    with conn._driver.session() as session:
+        result = session.run(query, parameters={'user_id': user_id})
+        record = result.single()
+        return record["count"] if record else False
 
 def checkPhase(line_bot_api, tk, conn, user_id):
     query = f"""
@@ -895,8 +956,9 @@ def fetch_show_score_rel(conn, user_id,current_node_id, question_tag,day_step):
     else:
         return False
 
-def update_user_progress(conn, user_id, node_id, day_step, node_step, question_tag,isEnd):
+def update_user_progress(conn, user_id, node_id, day_step, node_step, question_tag,isEnd,count,msg):
     isEnd = check_end_node(conn, node_id)
+    count = checkCount(line_bot_api, tk, conn, user_id)
     #dayScore = f"{question_tag}Score"
     print(isEnd)
     phase = False
@@ -907,7 +969,7 @@ def update_user_progress(conn, user_id, node_id, day_step, node_step, question_t
         n.phase = $phase
         
     '''
-    if isEnd:
+    if (isEnd and count > 3) or msg == "Yes":
         day_step = day_step + 1
         node_step = 1
         phase = True
