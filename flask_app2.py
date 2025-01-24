@@ -36,6 +36,7 @@ from flask import abort
 from linebot.models import TextSendMessage, QuickReply, QuickReplyButton, MessageAction
 from linebot.models import *
 from PIL import Image, ImageDraw, ImageFont
+import ollama
 app = Flask(__name__)
 
 uri = "neo4j:172.30.81.113:7687"
@@ -545,14 +546,24 @@ def display_node(line_bot_api, tk, user_id, msg):
             phase = True
         if count > 3:
             phase = False
-        if isEnd and phase == True:
-            #if count < 3:
             update_count(conn,line_bot_api, tk, user_id, count)
-            count = checkCount(line_bot_api, tk, conn, user_id)
-            update_phase(line_bot_api, tk, conn, user_id,count)
-            
-            start_question(line_bot_api, tk, conn, user_id)
-            return_message(line_bot_api, tk, user_id, msg)
+        if isEnd and phase == True:
+            #if count > 0:
+            #is_question = check_question(conn,line_bot_api, tk, user_id ,msg)
+            is_question = False
+            if count >= 1:
+                start_question(line_bot_api, tk, conn, user_id)
+                is_question = check_question(conn,line_bot_api, tk, user_id ,msg)
+            elif count == 0 :
+                start_question(line_bot_api, tk, conn, user_id)
+            if is_question or count == 0:
+                update_count(conn,line_bot_api, tk, user_id, count)
+                count = checkCount(line_bot_api, tk, conn, user_id)
+                update_phase(line_bot_api, tk, conn, user_id,count)
+            #    start_question(line_bot_api, tk, conn, user_id)
+                return_message(line_bot_api, tk, user_id, msg)
+            else:
+                repeat_question(line_bot_api, tk, conn, user_id)
             #update_count(conn,line_bot_api, tk, user_id, count)
 
         if isAnswerRel :
@@ -567,6 +578,66 @@ def display_node(line_bot_api, tk, user_id, msg):
 
     else:
         print("No node data found")
+
+def repeat_question(line_bot_api, tk, conn, user_id):
+    message = "ขออภัย โปรดพิมพ์คำถามเกี่ยวกับสุขภาพช่องปาก"
+    try:
+        line_bot_api.push_message(
+                user_id,
+                TextSendMessage(text=message)
+            )
+        print(f"Message sent to user {user_id}: {message}")
+    except Exception as e:
+        print(f"Error occurred: {e}")
+
+def get_ollama_response(prompt):
+    try:
+        response = ollama.chat(
+            model='llama3.2:1b',
+            messages=[
+                {
+                    'role': 'user',
+                    'content': prompt,
+                },
+            ])
+        return response['message']['content']
+    except Exception as e:
+        return f"Error: {e}"
+    
+def classify_sentence(sentence):
+    prompt = f'''
+ช่วยวิเคราะห์ว่าประโยคนี้เป็น "คำถาม" หรือ "บอกเล่า" และตอบโดยบอกว่าประโยคนี้เป็นคำถามหรือบอกเล่า:"{sentence}"
+    '''
+    response = get_ollama_response(prompt)
+    response = response.strip()
+    
+    print(f"llm response is :{response}")
+    if "คำถาม" in response and "คำตอบ" not in response:
+        return True # เป็นคำถาม
+    elif "คำตอบ" in response and "คำถาม" not in response:
+        return False # เป็นคำตอบ
+    elif "บอกเล่า" in response and "คำถาม" not in response:
+        return False
+    elif "บอกเลา" in response and "คำถาม"  in response:
+        if "ไม่ใช่คำถาม" in response:
+            return False
+        else:
+            return True
+    elif "คำถาม" in response and "คำตอบ" in response:
+ # หากมีทั้งสองคำ ให้พิจารณาข้อความเพิ่มเติม
+        if "ไม่ใช่คำถาม" in response:
+            return False
+        else:
+            return True
+    else:
+        return False #กรณีที่ไม่มีคำที่ต้องการ
+
+def check_question(conn,line_bot_api, tk, user_id ,msg):
+    is_question = classify_sentence(msg)
+    if is_question:
+        return True
+    else:
+        return False
 
 def resetCount(conn,line_bot_api, tk, user_id, count):
     query = f"""
