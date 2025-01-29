@@ -526,7 +526,7 @@ def display_node(line_bot_api, tk, user_id, msg):
          #   showAnswer = traverse_nodes(line_bot_api,tk,conn,wrongAnswers,node_id,user_id)
         #print(wrongAnswers)
         #print(f"final score1 is {final_score}")
-        #isFetch = False
+        isFetch = False
         #isFetch = check_Is_Fetch(line_bot_api, tk, conn, user_id)
 
         #if isFetch:
@@ -1075,7 +1075,7 @@ def update_user_progress(conn, user_id, node_id, day_step, node_step, question_t
     print(isEnd)
     #phase = False
     node_label = f"d{day_step}"
-    if isEnd  and phase == False and count == 0:
+    if isEnd and count == 0 :
         day_step = day_step + 1
         node_step = 1
         node_label = f"d{day_step}"
