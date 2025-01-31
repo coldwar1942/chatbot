@@ -37,6 +37,7 @@ from linebot.models import TextSendMessage, QuickReply, QuickReplyButton, Messag
 from linebot.models import *
 from PIL import Image, ImageDraw, ImageFont
 import ollama
+import os
 app = Flask(__name__)
 
 uri = "neo4j:172.30.81.113:7687"
@@ -52,7 +53,7 @@ driver = GraphDatabase.driver(
 
 CHANNEL_ACCESS_TOKEN = 'odz7P1Pu4YPBKfC2UaRJGzhP671gKFSR7DWrCKkBLCZaMUL4vRs62JDF9sfliaulr3C18QMazzHCXAZPBofFrBjs3schUsCWY9LoIbz0AH3PmGYb0COtKTDDwfqtlgJJ7W3mCN4YnYRwr41BTq6sKgdB04t89/1O/w1cDnyilFU='
 
-
+CACHE_FILE = "cached_data.json"
 #@app.route("/callback", methods=['POST'])
 #def callback():
     # get X-Line-Signature header value
@@ -84,14 +85,14 @@ CHANNEL_ACCESS_TOKEN = 'odz7P1Pu4YPBKfC2UaRJGzhP671gKFSR7DWrCKkBLCZaMUL4vRs62JDF
        # )
 
 
-def fetch_question_from_neo4j():
+def fetch_questions_from_neo4j():
     query = """
         MATCH (n:QAM)-[r:ANSWER]->(m:QAM)
         RETURN n.answer AS answer,n.pic AS pic, m
         """
     results = []
     conn = Neo4jConnection(uri, user, password)
-    with conn._driver.session() as session:
+    """with conn._driver.session() as session:
         result = session.run(query)
         for record in result:
             answer = record["answer"]
@@ -104,9 +105,31 @@ def fetch_question_from_neo4j():
             "questions": m_properties
             })
 
-    return results
+    return results"""
+    with conn._driver.session() as session:
+        result = session.run(query)
+    # Save data to JSON file
+        data = [record.data() for record in result]
+    with open(CACHE_FILE, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=4)
+    
+    return data
 
+def load_cached_data():
+    """Load data from cache file if available."""
+    if os.path.exists(CACHE_FILE):
+        with open(CACHE_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    return None
 
+def get_questions(use_cache=True):
+    if use_cache:
+        data = load_cached_data()
+        if data:
+            print("🔹 Loading data from cache...")
+            return data
+    print("🔹 Querying data from Neo4j...")
+    return fetch_questions_from_neo4j()
 
 def upload_to_google_drive(file_path, file_name):
     credentials = Credentials.from_service_account_file('path/to/credentials.json')
@@ -171,9 +194,20 @@ class Neo4jConnection:
             print(f"Connection failed: {e}")
             return False
 
-
+results = []
+questions = get_questions(use_cache=True)
 conn = Neo4jConnection(uri, user, password)
-results = fetch_question_from_neo4j()
+for record in questions:
+    answer = record["answer"]
+    pic = record.get("pic", "default_value")
+    m_properties = dict(record["m"].items())
+    results.append({
+        "answer": answer,
+        "pic": pic,
+        "questions": m_properties
+        })
+
+
 merged_results = []
 #print(results)
 for item in results:
@@ -210,7 +244,7 @@ vectors = encoder.encode(text)
 vector_dimension = vectors.shape[1]
 index = faiss.IndexFlatL2(vector_dimension)
 faiss.normalize_L2(vectors)
-index.add(vectors)
+index.add(vectors) 
 
 def push_line_message(conn,user_id, message_text):
     line_api_url = 'https://api.line.me/v2/bot/message/push'
@@ -535,6 +569,7 @@ def display_node(line_bot_api, tk, user_id, msg):
             phase = checkPhase(line_bot_api, tk, conn, user_id)
             count = checkCount(line_bot_api, tk, conn, user_id)
         if msg != "Hello" and phase == False:
+            updateisFetch(line_bot_api, tk, conn, user_id,count)
             if node_var:
                 update_user_variable(conn,user_id,node_var,msg)
             if node_rel_var:
@@ -603,6 +638,14 @@ def display_node(line_bot_api, tk, user_id, msg):
         
     else:
         print("No node data found")
+
+def updateisFetch(line_bot_api, tk, conn, user_id,count):
+    query = f"""
+        MATCH (n:user)
+        WHERE n.userID = $user_id
+        SET n.fetchNext = false
+    """
+    conn.query(query, parameters={'user_id': user_id})
 
 def check_Is_Fetch(line_bot_api, tk, conn, user_id):
     query = f"""
