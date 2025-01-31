@@ -526,12 +526,14 @@ def display_node(line_bot_api, tk, user_id, msg):
          #   showAnswer = traverse_nodes(line_bot_api,tk,conn,wrongAnswers,node_id,user_id)
         #print(wrongAnswers)
         #print(f"final score1 is {final_score}")
-        isFetch = False
-        #isFetch = check_Is_Fetch(line_bot_api, tk, conn, user_id)
+        #isFetch = False
+        isFetch = check_Is_Fetch(line_bot_api, tk, conn, user_id)
 
-        #if isFetch:
-         #   resetCount(conn,line_bot_api, tk, user_id, count)
-          #  update_phase(line_bot_api, tk, conn, user_id,count,isFetch)
+        if isFetch:
+            resetCount(conn,line_bot_api, tk, user_id, count)
+            update_phase(line_bot_api, tk, conn, user_id,count,isFetch)
+            phase = checkPhase(line_bot_api, tk, conn, user_id)
+            count = checkCount(line_bot_api, tk, conn, user_id)
         if msg != "Hello" and phase == False:
             if node_var:
                 update_user_variable(conn,user_id,node_var,msg)
@@ -639,9 +641,14 @@ def get_ollama_response(prompt):
         return f"Error: {e}"
     
 def classify_sentence(sentence):
+ #   prompt = f'''
+#ช่วยวิเคราะห์ว่าประโยคนี้เป็น "คำถาม" หรือ "บอกเล่า" และตอบโดยบอกว่าประโยคนี้เป็นคำถามหรือบอกเล่า:"{sentence}"
+ #   '''
     prompt = f'''
-ช่วยวิเคราะห์ว่าประโยคนี้เป็น "คำถาม" หรือ "บอกเล่า" และตอบโดยบอกว่าประโยคนี้เป็นคำถามหรือบอกเล่า:"{sentence}"
-    '''
+    Answer only, not explain:
+    โปรดวิเคราะห์ประโยคที่ให้มาว่าเป็นประโยคคำถามหรือประโยคบอกเล่า โดยตอบกลับเพียงแค่ 'คำถาม' หรือ 'บอกเล่า' เท่านั้น:
+ประโยค: "{sentence}" คำตอบ:
+'''
     response = get_ollama_response(prompt)
     response = response.strip()
     
