@@ -251,7 +251,7 @@ index = faiss.IndexFlatL2(vector_dimension)
 faiss.normalize_L2(vectors)
 index.add(vectors) 
 
-def push_line_message(conn,user_id, message_text):
+def push_line_message(conn,user_id, message_text,line_bot_api):
     line_api_url = 'https://api.line.me/v2/bot/message/push'
     headers = {
             'Content-Type': 'application/json',
@@ -266,9 +266,19 @@ def push_line_message(conn,user_id, message_text):
                 }
             ]
         }
-    fetch_next_day(conn,user_id)
-    response = requests.post(line_api_url, headers=headers, json=payload)
-    return response.status_code, response.text
+    #node_data = fetch_user_node_data(conn, user_id)
+    #node_id = node_data['nodeID']
+    #isEnd = check_end_node(conn, node_id)
+    #phase = checkPhase(line_bot_api, conn, user_id)
+    #boolean = check_confirm(line_bot_api,  conn, user_id, msg)
+    isConfirm = read_confirm(line_bot_api,  conn, user_id)
+    if isConfirm == True:
+     #   fetch_next_day(conn,user_id)
+        response = requests.post(line_api_url, headers=headers, json=payload)
+        updateCheckConfirm(line_bot_api, conn, user_id,False)
+        return response.status_code, response.text
+    else:
+        return None
 
 def push_flex_message(to, alt_text, flex_content):
     flex_message = FlexSendMessage(
@@ -311,11 +321,13 @@ def push_message_with_id():
     conn = Neo4jConnection(uri, user, password)
     data = request.get_json()
     user_id = data.get('user_id')
+    #msg = "ไม่ใช่"
     if not user_id:
         return jsonify({'error': 'user_id is required'}), 400
-    message_text = "Do you want to continue?"
-    status_code, response_text = push_line_message(conn,user_id, message_text)
-    
+    #boolean = check_confirm(line_bot_api, tk, conn, user_id, msg)
+    message_text = "โปรดส่งข้อความเพื่อดำเนินการวันถัดไป"
+    status_code, response_text = push_line_message(conn,user_id, message_text,line_bot_api)
+     
     if status_code == 200:
         print('Message sent successfully!')
         return jsonify({'message': 'Message sent successfully!'}), 200
@@ -323,13 +335,21 @@ def push_message_with_id():
         print(f'Failed to send message: {response_text}')
         return jsonify({'error': f'Failed to send message: {response_text}'}), 500
 
-def fetch_next_day(conn, user_id):
+def fetch_next_day(conn, user_id,boolean = True):
     query = f"""
         MATCH (n:user)
         WHERE n.userID = $user_id
         SET n.fetchNext = true
     """
-    conn.query(query, parameters={'user_id': user_id})
+    query2 = f'''
+        MATCH (n:user)
+        WHERE n.userID = $user_id
+        SET n.fetchNext = false
+    '''
+    if boolean:
+        conn.query(query, parameters={'user_id': user_id})
+    else:
+        conn.query(query2, parameters={'user_id': user_id})
 
 @app.route("/send_flex_message", methods=['GET'])
 def send_flex_message():
@@ -517,7 +537,8 @@ def check_user_id(line_bot_api,tk,user_id,msg):
 
 def create_user_node(driver,variable_value):
     query = '''
-        CREATE (n:user {nodeID:0,dayStep:1,userID : $userID})
+        CREATE (n:user {nodeID:0,dayStep:1,userID : $userID,questionCount:0,
+        phase:false,fetchNext:false,confirm:false,pushTime:3})
     '''
     parameters = {"userID": variable_value}
     with driver.session() as session:
@@ -552,7 +573,7 @@ def display_node(line_bot_api, tk, user_id, msg):
        # isEnd = False
        # phase = False i
 
-        phase = checkPhase(line_bot_api, tk, conn, user_id)
+        phase = checkPhase(line_bot_api, conn, user_id)
         count = checkCount(line_bot_api, tk, conn, user_id)
         isEnd = check_end_node(conn, node_id)
         print(f"count is {count}")
@@ -566,14 +587,19 @@ def display_node(line_bot_api, tk, user_id, msg):
         #print(wrongAnswers)
         #print(f"final score1 is {final_score}")
         #isFetch = False
+        
+        #    fetch_next_day(conn, user_id,False)
         isFetch = check_Is_Fetch(line_bot_api, tk, conn, user_id)
-        checkConfirm = check_confirm(line_bot_api, tk, conn, user_id, msg)
-        if isFetch and checkConfirm == False:
+        update_confirm(line_bot_api,  conn, user_id, msg)
+        isConfirm = read_confirm(line_bot_api,  conn, user_id)
+        if isConfirm == True:
             resetCount(conn,line_bot_api, tk, user_id, count)
             update_phase(line_bot_api, tk, conn, user_id,count,isFetch)
-            phase = checkPhase(line_bot_api, tk, conn, user_id)
+            phase = checkPhase(line_bot_api, conn, user_id)
             count = checkCount(line_bot_api, tk, conn, user_id)
-        if msg != "Hello" and phase == False:
+       #     updateCheckConfirm(line_bot_api, tk, conn, user_id)
+           # fetch_next_day(conn, user_id,False)
+        if msg != "Hello" and phase == False and isConfirm == False:
             updateisFetch(line_bot_api, tk, conn, user_id,count)
             if node_var:
                 update_user_variable(conn,user_id,node_var,msg)
@@ -604,7 +630,8 @@ def display_node(line_bot_api, tk, user_id, msg):
         #if showAnswer == False:
         if phase == False:
             send_node_info(line_bot_api, tk, conn, node_id, node_step, day_step,user_id)
-    
+            resetCount(conn,line_bot_api, tk, user_id, count)
+
         if isEnd:
             phase = True
             update_user_progress(conn, user_id, node_id, day_step, node_step, question_tag,isEnd,count,msg,tk,phase)
@@ -615,27 +642,34 @@ def display_node(line_bot_api, tk, user_id, msg):
             #if count > 0:
             #is_question = check_question(conn,line_bot_api, tk, user_id ,msg)
             is_question = False
-            if count >= 1:
+            #if count >= 1:
                # start_question(line_bot_api, tk, conn, user_id, checkConfirm)
                # checkConfirm = check_confirm(line_bot_api, tk, conn, user_id, msg)
-                
-                start_question(line_bot_api, tk, conn, user_id, False)
-                is_question = check_question(conn,line_bot_api, tk, user_id ,msg)
+                #start_question(line_bot_api, tk, conn, user_id)
+                #start_question(line_bot_api, tk, conn, user_id, False)
+                #is_question = check_question(conn,line_bot_api, tk, user_id ,msg)
 
-            elif count == 0 :
-                start_question(line_bot_api, tk, conn, user_id)
-            if is_question or count == 0 :
+           # if count == 0:
+            #    start_question(line_bot_api, tk, conn, user_id)
+             #   update_count(conn,line_bot_api, tk, user_id, count)
+            #if is_question or count == 0 :
+            if count > 0 :
                 update_phase(line_bot_api, tk, conn, user_id,count,isFetch)
                 update_count(conn,line_bot_api, tk, user_id, count)
                 count = checkCount(line_bot_api, tk, conn, user_id)
                 #update_phase(line_bot_api, tk, conn, user_id,count,isFetch)
             #    start_question(line_bot_api, tk, conn, user_id)
-                if msg != "ใช่":
-                    if msg != "ไม่ใช่":
+                if msg != "ไม่ใช่":
+                    if msg != "ใช่":
                         return_message(line_bot_api, tk, user_id, msg)
-            else:
-                repeat_question(line_bot_api, tk, conn, user_id)
+                        start_question(line_bot_api, tk, conn, user_id)
+            #else:
+            #    repeat_question(line_bot_api, tk, conn, user_id)
             #update_count(conn,line_bot_api, tk, user_id, count)
+            if count == 0:
+                start_question(line_bot_api, tk, conn, user_id)
+                update_count(conn,line_bot_api, tk, user_id, count)
+                update_phase(line_bot_api, tk, conn, user_id,count,isFetch)
 
         if isAnswerRel :
             x = traverse_nodes(line_bot_api,tk,conn,wrongAnswers,node_id,user_id)
@@ -650,25 +684,46 @@ def display_node(line_bot_api, tk, user_id, msg):
     else:
         print("No node data found")
 
-def check_confirm(line_bot_api, tk, conn, user_id, msg):
+def read_confirm(line_bot_api,  conn, user_id):
     query = f"""
-        MATCH (n:user)
-        WHERE n.userID = $user_id
-        SET n.confirm = true
+    MATCH (n:user)
+    WHERE n.userID = $user_id
+    RETURN n.confirm as confirm
     """
-    query2 = f"""
+    with conn._driver.session() as session:
+        result = session.run(query, parameters={'user_id': user_id})
+        record = result.single()
+        return record["confirm"] if record else False
+
+
+def updateCheckConfirm(line_bot_api,  conn, user_id,boolean=False):
+    query = f"""
         MATCH (n:user)
         WHERE n.userID = $user_id
         SET n.confirm = false
     """
+    conn.query(query, parameters={'user_id': user_id})
+
+
+def update_confirm(line_bot_api,  conn, user_id, msg):
+    query = f"""
+        MATCH (n:user)
+        WHERE n.userID = $user_id
+        SET n.confirm = false
+    """
+    query2 = f"""
+        MATCH (n:user)
+        WHERE n.userID = $user_id
+        SET n.confirm = true
+    """
     boolean = False
     if msg == "ใช่":
         conn.query(query, parameters={'user_id': user_id})
-        boolean = True
+        boolean = False
     elif msg == "ไม่ใช่":
         conn.query(query2, parameters={'user_id': user_id})
-        boolean = False
-    return boolean
+        boolean = True
+    #return boolean
     
 def updateisFetch(line_bot_api, tk, conn, user_id,count):
     query = f"""
@@ -798,7 +853,7 @@ def update_phase(line_bot_api, tk, conn, user_id,count,isFetch):
     """
     if isFetch:
         conn.query(query2, parameters={'user_id': user_id})
-    elif count < 3:
+    elif count < 6:
         conn.query(query, parameters={'user_id': user_id})
     else:
         conn.query(query2, parameters={'user_id': user_id})
@@ -810,7 +865,7 @@ def update_count(conn,line_bot_api, tk, user_id, count):
         SET n.questionCount = $count
     """
     count = checkCount(line_bot_api, tk, conn, user_id)
-    if count < 3 :
+    if count < 10:
         count = count + 1
     else:
         count = 0
@@ -828,7 +883,7 @@ def checkCount(line_bot_api, tk, conn, user_id):
         record = result.single()
         return record["count"] if record else False
 
-def checkPhase(line_bot_api, tk, conn, user_id):
+def checkPhase(line_bot_api,  conn, user_id):
     query = f"""
     MATCH (n:user)
     WHERE n.userID = $user_id
