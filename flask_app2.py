@@ -36,7 +36,12 @@ from flask import abort
 from linebot.models import TextSendMessage, QuickReply, QuickReplyButton, MessageAction
 from linebot.models import *
 from PIL import Image, ImageDraw, ImageFont
+from langchain.prompts import PromptTemplate
+from langchain_ollama import ChatOllama
 import ollama
+from langchain.memory import ConversationBufferMemory
+from langchain.chains import LLMChain
+from langchain.llms import Ollama
 import os
 app = Flask(__name__)
 
@@ -562,8 +567,8 @@ def display_node(line_bot_api, tk, user_id, msg):
         #print(f"final score1 is {final_score}")
         #isFetch = False
         isFetch = check_Is_Fetch(line_bot_api, tk, conn, user_id)
-
-        if isFetch:
+        checkConfirm = check_confirm(line_bot_api, tk, conn, user_id, msg)
+        if isFetch and checkConfirm == False:
             resetCount(conn,line_bot_api, tk, user_id, count)
             update_phase(line_bot_api, tk, conn, user_id,count,isFetch)
             phase = checkPhase(line_bot_api, tk, conn, user_id)
@@ -611,17 +616,23 @@ def display_node(line_bot_api, tk, user_id, msg):
             #is_question = check_question(conn,line_bot_api, tk, user_id ,msg)
             is_question = False
             if count >= 1:
-                start_question(line_bot_api, tk, conn, user_id)
+               # start_question(line_bot_api, tk, conn, user_id, checkConfirm)
+               # checkConfirm = check_confirm(line_bot_api, tk, conn, user_id, msg)
+                
+                start_question(line_bot_api, tk, conn, user_id, False)
                 is_question = check_question(conn,line_bot_api, tk, user_id ,msg)
+
             elif count == 0 :
                 start_question(line_bot_api, tk, conn, user_id)
-            if is_question or count == 0:
+            if is_question or count == 0 :
                 update_phase(line_bot_api, tk, conn, user_id,count,isFetch)
                 update_count(conn,line_bot_api, tk, user_id, count)
                 count = checkCount(line_bot_api, tk, conn, user_id)
                 #update_phase(line_bot_api, tk, conn, user_id,count,isFetch)
             #    start_question(line_bot_api, tk, conn, user_id)
-                return_message(line_bot_api, tk, user_id, msg)
+                if msg != "ใช่":
+                    if msg != "ไม่ใช่":
+                        return_message(line_bot_api, tk, user_id, msg)
             else:
                 repeat_question(line_bot_api, tk, conn, user_id)
             #update_count(conn,line_bot_api, tk, user_id, count)
@@ -639,6 +650,26 @@ def display_node(line_bot_api, tk, user_id, msg):
     else:
         print("No node data found")
 
+def check_confirm(line_bot_api, tk, conn, user_id, msg):
+    query = f"""
+        MATCH (n:user)
+        WHERE n.userID = $user_id
+        SET n.confirm = true
+    """
+    query2 = f"""
+        MATCH (n:user)
+        WHERE n.userID = $user_id
+        SET n.confirm = false
+    """
+    boolean = False
+    if msg == "ใช่":
+        conn.query(query, parameters={'user_id': user_id})
+        boolean = True
+    elif msg == "ไม่ใช่":
+        conn.query(query2, parameters={'user_id': user_id})
+        boolean = False
+    return boolean
+    
 def updateisFetch(line_bot_api, tk, conn, user_id,count):
     query = f"""
         MATCH (n:user)
@@ -672,7 +703,7 @@ def repeat_question(line_bot_api, tk, conn, user_id):
 def get_ollama_response(prompt):
     try:
         response = ollama.chat(
-            model='llama3.2:1b',
+            model='deepseek-r1:1.5b',
             messages=[
                 {
                     'role': 'user',
@@ -682,7 +713,30 @@ def get_ollama_response(prompt):
         return response['message']['content']
     except Exception as e:
         return f"Error: {e}"
-    
+
+def answer_sentence(sentence):
+    memory = ConversationBufferMemory()
+    memory.clear()
+    chat_model = ChatOllama(
+            model="llama3.2:1b",
+            temperature=0.2,
+            max_tokens=30
+        )
+    prompt_template = PromptTemplate(
+            input_variables=[],
+            template=f"กล่าวก่อนตอบคำถาม เป็นวลี ก่อนตอบคำถามให้ลูกค้า 1 วลี/ประโยค ห้อมซ้อนข้อความ ที่มีเนื้อหาเดียวกับ {sentence}")
+    #llm = Ollama(model="llama3.2:1b",temperature=0)
+    #prompt_template = PromptTemplate(
+     #   input_variables=[],
+      #  template=f"กล่าวก่อนตอบคำถาม เป็นวลี ก่อนตอบคำถามให้ลูกค้า 1 วลี/ประโยค ห้อมซ้อนข้อความ ที่มีเนื้อหาเดียวกับ {sentence}"
+    #)
+    intro_chain = LLMChain(llm=chat_model, prompt=prompt_template)
+    intro_response = intro_chain.run({})
+    final_response = f"{intro_response} {sentence}"
+    #print(final_response)
+    return final_response
+
+
 def classify_sentence(sentence):
  #   prompt = f'''
 #ช่วยวิเคราะห์ว่าประโยคนี้เป็น "คำถาม" หรือ "บอกเล่า" และตอบโดยบอกว่าประโยคนี้เป็นคำถามหรือบอกเล่า:"{sentence}"
@@ -717,7 +771,7 @@ def classify_sentence(sentence):
         return False #กรณีที่ไม่มีคำที่ต้องการ
 
 def check_question(conn,line_bot_api, tk, user_id ,msg):
-    is_question = classify_sentence(msg)
+    is_question = answer_sentence(msg)
     if is_question:
         return True
     else:
@@ -785,22 +839,44 @@ def checkPhase(line_bot_api, tk, conn, user_id):
         record = result.single()
         return record["phase"] if record else False
 
-def start_question(line_bot_api, tk, conn, user_id):
+def start_question(line_bot_api, tk, conn, user_id,boolean = True):
     query = f'''
         MATCH (a:Question)
         WHERE id(a) = 597
         RETURN a.name AS name
     '''
+    query2 = f'''
+        MATCH (a:Question)-[r:NEXT]->(b:Question)
+        WHERE id(a) =  620 AND id(b) = 597
+        RETURN a.name as name ,r.choice as choice,b.name as name2
+    '''
     with conn._driver.session() as session:
-        result = session.run(query)
-        record = result.single()
-        name = record["name"]
-        entity = {"name":None}
-        entity["name"] = record.get("name", entity["name"]).strip() if record.get("name") else entity["name"]
+        result = session.run(query2)
+        entity = {"name":None,"name2":None,"choices":[]}
+        for record in result:
+            entity["name"] = record.get("name", entity["name"]).strip() if record.get("name") else entity["name"]
+            entity["name2"] = record.get("name2", entity["name2"]).strip() if record.get("name2") else entity["name2"]
+            if record.get("choice") is not None:
+                entity["choices"].append(record["choice"])
+        #record = result.single()
+       # name = record["name"]
+       # entity = {"name":None}
+       # entity["name"] = record.get("name", entity["name"]).strip() if record.get("name") else entity["name"]
     
     messages = []
-    if entity["name"]:
-        messages.append(TextSendMessage(text=entity["name"]))
+    if boolean:
+        if entity["name"]:
+            messages.append(TextSendMessage(text=entity["name"]))
+    else:
+        if entity["name2"]:
+             messages.append(TextSendMessage(text=entity["name2"]))
+    if boolean:
+        if entity["choices"] is not None:
+            quick_reply_buttons = [QuickReplyButton(action=MessageAction(label=c, text=c)) for c in entity["choices"]
+            if c.strip()]
+            if quick_reply_buttons:
+                quick_reply = QuickReply(items=quick_reply_buttons)
+                messages.append(TextSendMessage(text="โปรดเลือกอย่างใดอย่างหนึ่ง", quick_reply=quick_reply))
     if messages:
         line_bot_api.push_message(user_id, messages)
     else:
@@ -808,7 +884,8 @@ def start_question(line_bot_api, tk, conn, user_id):
 
 def return_message(line_bot_api, tk, user_id, msg):
     chk_msg = check_sentence(msg)
-    response = f"Similar to: {chk_msg[0]} Answer: {chk_msg[1]}"
+   # response =  answer_sentence(chk_msg[1])
+    response = f"{chk_msg[1]}"
  
     url_pattern = r'https?://[^\s]+'
     urls = re.findall(url_pattern, response)
@@ -838,7 +915,7 @@ def check_sentence(msg):
         Sentence = Ques[ann[0][0]]
     else:
         Sentence = msg
-        answer = msg
+        answer = "ขออภัยไม่มีข้อมูลคำตอบของคำถามในฐานข้อมูล"
 
     return [Sentence, answer]
 
