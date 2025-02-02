@@ -275,10 +275,11 @@ def push_line_message(conn,user_id, message_text,line_bot_api):
     if isConfirm == True:
      #   fetch_next_day(conn,user_id)
         response = requests.post(line_api_url, headers=headers, json=payload)
-        updateCheckConfirm(line_bot_api, conn, user_id,False)
+        fetch_next_day(conn,user_id)
+    #    updateCheckConfirm(line_bot_api, conn, user_id,False)
         return response.status_code, response.text
     else:
-        return None
+        return 204, "No message sent (isConfirm is False)" 
 
 def push_flex_message(to, alt_text, flex_content):
     flex_message = FlexSendMessage(
@@ -592,11 +593,14 @@ def display_node(line_bot_api, tk, user_id, msg):
         isFetch = check_Is_Fetch(line_bot_api, tk, conn, user_id)
         update_confirm(line_bot_api,  conn, user_id, msg)
         isConfirm = read_confirm(line_bot_api,  conn, user_id)
-        if isConfirm == True:
+        print(f'isConfirm: {isConfirm}')
+        if isConfirm == True and isFetch == True:
             resetCount(conn,line_bot_api, tk, user_id, count)
-            update_phase(line_bot_api, tk, conn, user_id,count,isFetch)
+            update_phase(line_bot_api, tk, conn, user_id,count,isConfirm)
             phase = checkPhase(line_bot_api, conn, user_id)
             count = checkCount(line_bot_api, tk, conn, user_id)
+            updateCheckConfirm(line_bot_api,  conn, user_id,False)
+            updateFetchNext(line_bot_api,  conn, user_id,False)
        #     updateCheckConfirm(line_bot_api, tk, conn, user_id)
            # fetch_next_day(conn, user_id,False)
         if msg != "Hello" and phase == False and isConfirm == False:
@@ -631,13 +635,14 @@ def display_node(line_bot_api, tk, user_id, msg):
         if phase == False:
             send_node_info(line_bot_api, tk, conn, node_id, node_step, day_step,user_id)
             resetCount(conn,line_bot_api, tk, user_id, count)
-
+        print(f'isEnd2:{isEnd}')
         if isEnd:
             phase = True
             update_user_progress(conn, user_id, node_id, day_step, node_step, question_tag,isEnd,count,msg,tk,phase)
         #if count > 3:
             #phase = False
            # update_count(conn,line_bot_api, tk, user_id, count)
+        print(f'phase2:{phase}')
         if phase == True:
             #if count > 0:
             #is_question = check_question(conn,line_bot_api, tk, user_id ,msg)
@@ -695,6 +700,13 @@ def read_confirm(line_bot_api,  conn, user_id):
         record = result.single()
         return record["confirm"] if record else False
 
+def updateFetchNext(line_bot_api,  conn, user_id,boolean=False):
+    query = f"""
+    MATCH (n:user)
+    WHERE n.userID = $user_id
+    SET n.fetchNext = false
+    """
+    conn.query(query, parameters={'user_id': user_id})
 
 def updateCheckConfirm(line_bot_api,  conn, user_id,boolean=False):
     query = f"""
@@ -840,7 +852,7 @@ def resetCount(conn,line_bot_api, tk, user_id, count):
     """
     conn.query(query, parameters={'user_id': user_id})
 
-def update_phase(line_bot_api, tk, conn, user_id,count,isFetch):
+def update_phase(line_bot_api, tk, conn, user_id,count,isConfirm):
     query = f"""
         MATCH (n:user)
         WHERE n.userID = $user_id
@@ -851,7 +863,7 @@ def update_phase(line_bot_api, tk, conn, user_id,count,isFetch):
         WHERE n.userID = $user_id
         SET n.phase = false
     """
-    if isFetch:
+    if isConfirm:
         conn.query(query2, parameters={'user_id': user_id})
     elif count < 6:
         conn.query(query, parameters={'user_id': user_id})
@@ -1182,7 +1194,7 @@ def fetch_answer(conn, user_id,node_id,question_tag,day_step):
 def fetch_next_node(tk,conn, current_node_id, msg, day_step,user_id):
     isEnd = check_end_node(conn, current_node_id)
     count = checkCount(line_bot_api, tk, conn, user_id) 
-    phase = checkPhase(line_bot_api, tk, conn, user_id)
+    phase = checkPhase(line_bot_api, conn, user_id)
     if phase == False:
         node_label = f"d{day_step}"
         query = f'''
