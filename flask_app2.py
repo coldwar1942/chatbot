@@ -279,7 +279,7 @@ def push_line_message(conn,user_id, message_text,line_bot_api):
     #    updateCheckConfirm(line_bot_api, conn, user_id,False)
         return response.status_code, response.text
     else:
-        return 204, "No message sent (isConfirm is False)" 
+        return 204, "No message sent (isConfirm is False) " 
 
 def push_flex_message(to, alt_text, flex_content):
     flex_message = FlexSendMessage(
@@ -333,7 +333,7 @@ def push_message_with_id():
         print('Message sent successfully!')
         return jsonify({'message': 'Message sent successfully!'}), 200
     else:
-        print(f'Failed to send message: {response_text}')
+        print(f'Failed to send message: {response_text} userID:{user_id}')
         return jsonify({'error': f'Failed to send message: {response_text}'}), 500
 
 def fetch_next_day(conn, user_id,boolean = True):
@@ -539,7 +539,7 @@ def check_user_id(line_bot_api,tk,user_id,msg):
 def create_user_node(driver,variable_value):
     query = '''
         CREATE (n:user {nodeID:0,dayStep:1,userID : $userID,questionCount:0,
-        phase:false,fetchNext:false,confirm:false,pushTime:3})
+        phase:false,fetchNext:false,confirm:false,pushTime:1})
     '''
     parameters = {"userID": variable_value}
     with driver.session() as session:
