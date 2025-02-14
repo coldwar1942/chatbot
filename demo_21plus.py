@@ -198,7 +198,7 @@ class Neo4jConnection:
         except Exception as e:
             print(f"Connection failed: {e}")
             return False
-
+'''
 results = []
 questions = get_questions(use_cache=True)
 conn = Neo4jConnection(uri, user, password)
@@ -249,7 +249,7 @@ vectors = encoder.encode(text)
 vector_dimension = vectors.shape[1]
 index = faiss.IndexFlatL2(vector_dimension)
 faiss.normalize_L2(vectors)
-index.add(vectors) 
+index.add(vectors) '''
 
 def push_line_message(conn,user_id, message_text,line_bot_api):
     line_api_url = 'https://api.line.me/v2/bot/message/push'
@@ -269,7 +269,10 @@ def push_line_message(conn,user_id, message_text,line_bot_api):
     #node_data = fetch_user_node_data(conn, user_id)
     #node_id = node_data['nodeID']
     #isEnd = check_end_node(conn, node_id)
-    #phase = checkPhase(line_bot_api, conn, user_id)
+    
+    phase = checkPhase(line_bot_api, conn, user_id)
+    if phase == False:
+        return 204, "No message sent (isConfirm is False)"
     #boolean = check_confirm(line_bot_api,  conn, user_id, msg)
     #isConfirm = read_confirm(line_bot_api,  conn, user_id)
     #if isConfirm == True:
@@ -279,11 +282,14 @@ def push_line_message(conn,user_id, message_text,line_bot_api):
     if node_data:
         node_id, day_step, node_step = node_data['nodeID'], node_data['dayStep'], node_data['nodeStep']
         entity_data = fetch_entity_data(conn, node_id, node_step,user_id)
+    if day_step == 4:
+        return 204, "No message sent (isConfirm is False)"
     messages = []
+    print(entity_data)
     if entity_data["name"]:
-        messages.append({"type": "text", "text": entity_data[name]})
+        messages.append({"type": "text", "text": entity_data["name"]})
     if entity_data["name2"]:
-        messages.append({"type": "text", "text": entity_data[name2]})
+        messages.append({"type": "text", "text": entity_data["name2"]})
     if entity_data["photo"]:
         messages.append({
             "type": "image",
@@ -311,6 +317,7 @@ def push_line_message(conn,user_id, message_text,line_bot_api):
         else:
             print(f"❌ Failed to send message: {response.status_code} - {response.text}")
     #    updateCheckConfirm(line_bot_api, conn, user_id,False)
+    fetch_next_day(conn,user_id)
     return 200, "Set Variable"
     #else:
      #   return 204, "No message sent (isConfirm is False)" 
@@ -597,7 +604,7 @@ def check_user_id(line_bot_api,tk,user_id,msg):
 def create_user_node(driver,variable_value):
     query = '''
         CREATE (n:user {nodeID:0,dayStep:1,userID : $userID,questionCount:0,
-        phase:false,fetchNext:false,confirm:false,pushTime:3})
+        phase:false,fetchNext:false,confirm:false,pushTime:1})
     '''
     parameters = {"userID": variable_value}
     with driver.session() as session:
@@ -621,6 +628,9 @@ def display_node(line_bot_api, tk, user_id, msg):
      
     if node_data:
         node_id, day_step, node_step = node_data['nodeID'], node_data['dayStep'], node_data['nodeStep'] 
+        print(f'daystep is {day_step}')
+        if day_step == 4:
+            return 0
         node_var = fetch_node_variable(conn, node_id)
         node_rel_var = fetch_rel_node_variable(conn, node_id)
         node_image = fetch_node_image(conn, node_id)
@@ -654,7 +664,7 @@ def display_node(line_bot_api, tk, user_id, msg):
         print(f'isConfirm: {isConfirm}')
         if isFetch == True:
             resetCount(conn,line_bot_api, tk, user_id, count)
-            update_phase(line_bot_api, tk, conn, user_id,count,isConfirm)
+            update_phase(line_bot_api, tk, conn, user_id,count,True)
             phase = checkPhase(line_bot_api, conn, user_id)
             count = checkCount(line_bot_api, tk, conn, user_id)
            # updateCheckConfirm(line_bot_api,  conn, user_id,False)
@@ -1449,14 +1459,14 @@ def fetch_entity_data(conn, node_id, node_step,user_id):
         WHERE id(n) = $node_id
         OPTIONAL MATCH (n)-[r:NEXT]->(m)
         OPTIONAL MATCH (n)-[a:ANSWER]->(m)
-        RETURN n.name as name, n.name2 as name2, n.photo as photo, r.choice as choice,r.name as quickreply, coalesce(n.video, '') as video,n.pic1 as pic1,n.pic2 as pic2,n.pic3 as pic3
+        RETURN n.name as name, n.name2 as name2, n.photo as photo, r.choice as choice,r.name as quickreply, coalesce(n.video, '') as video,n.pic1 as pic1,n.pic2 as pic2,n.pic3 as pic3,n.photo2 as photo2
     '''
     query2 = '''
         MATCH (n:user)
         WHERE n.userID = $user_id
         RETURN n.relDay9 as relVar
     '''
-    entity = {"name": None, "name2": None, "photo": None,"quickreply":None, "choices": [],
+    entity = {"name": None, "name2": None, "photo": None,"photo2": None,"quickreply":None, "choices": [],
               "video":None,"relpic":None}
     
     with conn._driver.session() as session:
@@ -1487,6 +1497,7 @@ def fetch_entity_data(conn, node_id, node_step,user_id):
     
             entity["photo"] = record.get("photo", entity["photo"]).strip() if record.get("photo") else entity["photo"]
 
+            entity["photo2"] = record.get("photo2", entity["photo2"]).strip() if record.get("photo2") else entity["photo2"]
             entity["video"] = record.get("video", entity["video"]).strip() if record.get("video") else entity["video"]
             if record.get("quickreply") is not None:
                 entity["quickreply"] = record.get("quickreply", entity["quickreply"]).strip()
@@ -1528,6 +1539,9 @@ def send_messages(line_bot_api, tk, entity_data):
         messages.append(TextSendMessage(text=entity_data["name2"]))
     if entity_data["photo"]:
         messages.append(ImageSendMessage(original_content_url=entity_data["photo"], preview_image_url=entity_data["photo"]))
+    if entity_data["photo2"]:
+        messages.append(ImageSendMessage(original_content_url=entity_data["photo2"], preview_image_url=entity_data["photo2"]))
+
     if entity_data["video"]:
         messages.append(VideoSendMessage(original_content_url=entity_data["video"],preview_image_url=entity_data["video"]))
 
