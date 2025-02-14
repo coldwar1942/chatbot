@@ -271,49 +271,15 @@ def push_line_message(conn,user_id, message_text,line_bot_api):
     #isEnd = check_end_node(conn, node_id)
     #phase = checkPhase(line_bot_api, conn, user_id)
     #boolean = check_confirm(line_bot_api,  conn, user_id, msg)
-    #isConfirm = read_confirm(line_bot_api,  conn, user_id)
-    #if isConfirm == True:
+    isConfirm = read_confirm(line_bot_api,  conn, user_id)
+    if isConfirm == True:
      #   fetch_next_day(conn,user_id)
-   # response = requests.post(line_api_url, headers=headers, json=payload)
-    node_data = fetch_user_node_data(conn, user_id)
-    if node_data:
-        node_id, day_step, node_step = node_data['nodeID'], node_data['dayStep'], node_data['nodeStep']
-        entity_data = fetch_entity_data(conn, node_id, node_step,user_id)
-    messages = []
-    if entity_data["name"]:
-        messages.append({"type": "text", "text": entity_data[name]})
-    if entity_data["name2"]:
-        messages.append({"type": "text", "text": entity_data[name2]})
-    if entity_data["photo"]:
-        messages.append({
-            "type": "image",
-            "originalContentUrl": entity_data["photo"],
-            "previewImageUrl": entity_data["photo"]
-        })
-    if entity_data["quickreply"] is not None:
-        messages.append({
-            "type": "text",
-            "text": entity_data["quickreply"],
-            "quickReply": {
-                "items": [{"type": "action", "action": {"type": "message", "label": choice, "text": choice}} for choice in entity_data["choices"]]
-            }
-        })
-#    fetch_next_day(conn,user_id)
-    if messages:
-        payload = {
-            "to": user_id,
-            "messages": messages[:5]  # ส่งได้สูงสุด 5 ข้อความ
-        }
         response = requests.post(line_api_url, headers=headers, json=payload)
-
-        if response.status_code == 200:
-            print("✅ Message sent successfully!")
-        else:
-            print(f"❌ Failed to send message: {response.status_code} - {response.text}")
+        fetch_next_day(conn,user_id)
     #    updateCheckConfirm(line_bot_api, conn, user_id,False)
-    return 200, "Set Variable"
-    #else:
-     #   return 204, "No message sent (isConfirm is False)" 
+        return response.status_code, response.text
+    else:
+        return 204, "No message sent (isConfirm is False)" 
 
 def push_flex_message(to, alt_text, flex_content):
     flex_message = FlexSendMessage(
@@ -350,8 +316,6 @@ flex_content = {
         ]
     }
 }
-
-
 
 @app.route('/push_message_with_id', methods=['POST'])
 def push_message_with_id():
@@ -411,14 +375,12 @@ def linebot():
         msg_type = json_data['events'][0]['message']['type']
         #if msg_type == 'text':
         #msg = json_data['events'][0]['message']['text']
-        conn = Neo4jConnection(uri, user, password)
+    
         tk = json_data['events'][0]['replyToken']
         user_id = json_data['events'][0]['source']['userId']
         if msg_type == 'text':
             msg = json_data['events'][0]['message']['text']
-            save_user_message(conn, user_id, msg)
-            userMessage = get_user_message(conn, user_id)
-            reply_msg(line_bot_api, tk, user_id, userMessage)
+            reply_msg(line_bot_api, tk, user_id, msg)
         elif msg_type == 'image':
             message_id = json_data['events'][0]['message']['id']
             reply_msg(line_bot_api, tk, user_id, message_id)
@@ -450,26 +412,6 @@ def linebot():
     except Exception as e:
         print(e) 
     return 'OK'
-
-def save_user_message(conn, user_id, msg):
-    query = f'''
-        MATCH (n:user)
-        WHERE n.userID = $user_id
-        SET n.userMessage = $msg
-    '''
-    conn.query(query, parameters={'user_id': user_id,'msg':msg})
-
-def get_user_message(conn, user_id):
-    query = f'''
-        MATCH (n:user)
-        WHERE n.userID = $user_id
-        RETURN n.userMessage AS userMessage
-    '''
-    with conn._driver.session() as session:
-        result = session.run(query, parameters={'user_id': user_id})
-        record = result.single()
-        return record["userMessage"] if record else None
-
 
 def crop_image(image_path, output_path, expand_x=20, expand_y=20):
     image = cv2.imread(image_path)
@@ -652,16 +594,16 @@ def display_node(line_bot_api, tk, user_id, msg):
         update_confirm(line_bot_api,  conn, user_id, msg)
         isConfirm = read_confirm(line_bot_api,  conn, user_id)
         print(f'isConfirm: {isConfirm}')
-        if isFetch == True:
+        if isConfirm == True and isFetch == True:
             resetCount(conn,line_bot_api, tk, user_id, count)
             update_phase(line_bot_api, tk, conn, user_id,count,isConfirm)
             phase = checkPhase(line_bot_api, conn, user_id)
             count = checkCount(line_bot_api, tk, conn, user_id)
-           # updateCheckConfirm(line_bot_api,  conn, user_id,False)
+            updateCheckConfirm(line_bot_api,  conn, user_id,False)
             updateFetchNext(line_bot_api,  conn, user_id,False)
        #     updateCheckConfirm(line_bot_api, tk, conn, user_id)
            # fetch_next_day(conn, user_id,False)
-        if msg != "Hello" and phase == False:
+        if msg != "Hello" and phase == False and isConfirm == False:
             updateisFetch(line_bot_api, tk, conn, user_id,count)
             if node_var:
                 update_user_variable(conn,user_id,node_var,msg)
@@ -685,10 +627,7 @@ def display_node(line_bot_api, tk, user_id, msg):
                 node_id = fetch_next_node(tk,conn, node_id, msg,day_step,user_id) or node_id
         isEnd = check_end_node(conn, node_id)
 
-        
         isAnswerRel = fetch_answer_rel(conn, node_id)
-
-        
         update_user_progress(conn, user_id, node_id, day_step, node_step, question_tag,isEnd,count,msg,tk,phase)
         
 
@@ -698,9 +637,7 @@ def display_node(line_bot_api, tk, user_id, msg):
             resetCount(conn,line_bot_api, tk, user_id, count)
         print(f'isEnd2:{isEnd}')
         if isEnd:
-            update_user_phase(conn, user_id,True)
-            phase = checkPhase(line_bot_api, conn, user_id)
-            #phase = True
+            phase = True
             update_user_progress(conn, user_id, node_id, day_step, node_step, question_tag,isEnd,count,msg,tk,phase)
         #if count > 3:
             #phase = False
@@ -727,15 +664,15 @@ def display_node(line_bot_api, tk, user_id, msg):
                 count = checkCount(line_bot_api, tk, conn, user_id)
                 #update_phase(line_bot_api, tk, conn, user_id,count,isFetch)
             #    start_question(line_bot_api, tk, conn, user_id)
-               # if msg != "ไม่ใช่":
-                #    if msg != "ใช่":
-                 #       return_message(line_bot_api, tk, user_id, msg)
-                  #      start_question(line_bot_api, tk, conn, user_id)
+                if msg != "ไม่ใช่":
+                    if msg != "ใช่":
+                        return_message(line_bot_api, tk, user_id, msg)
+                        start_question(line_bot_api, tk, conn, user_id)
             #else:
             #    repeat_question(line_bot_api, tk, conn, user_id)
             #update_count(conn,line_bot_api, tk, user_id, count)
             if count == 0:
-               # start_question(line_bot_api, tk, conn, user_id)
+                start_question(line_bot_api, tk, conn, user_id)
                 update_count(conn,line_bot_api, tk, user_id, count)
                 update_phase(line_bot_api, tk, conn, user_id,count,isFetch)
 
@@ -743,8 +680,7 @@ def display_node(line_bot_api, tk, user_id, msg):
             x = traverse_nodes(line_bot_api,tk,conn,wrongAnswers,node_id,user_id)
             node_id = x
             print(f"x nodeid is {x}")
-            update_user_progress(conn, user_id, node_id, day_step, node_step, question_tag,isEnd,count,msg,tk,phase)
-            #update_user_progress(conn, user_id, node_id, day_step, node_step, question_tag)
+            update_user_progress(conn, user_id, node_id, day_step, node_step, question_tag)
             print(x)
             #node_id = x
             #update_user_progress(conn, user_id, node_id, day_step, node_step, question_tag)
@@ -752,14 +688,6 @@ def display_node(line_bot_api, tk, user_id, msg):
         
     else:
         print("No node data found")
-
-def update_user_phase(conn, user_id,boolean):
-    query = f"""
-        MATCH (n:user)
-        WHERE n.userID = $user_id
-        SET n.phase = $boolean
-    """
-    conn.query(query, parameters={'user_id': user_id, 'boolean':boolean})
 
 def read_confirm(line_bot_api,  conn, user_id):
     query = f"""
