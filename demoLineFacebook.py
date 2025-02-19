@@ -414,10 +414,13 @@ def webhook():
         for entry in body.get("entry", []):
             for event in entry.get("messaging", []):
                 sender_id = event["sender"]["id"]
-                user_message = event["message"]["text"]
- 
- # ✅ ตอบกลับข้อความอัตโนมัติ
-                reply_facebook_message(sender_id, user_message)
+                if "message" in event:
+                    user_message = event["message"]["text"]
+                    reply_facebook_message(sender_id, user_message)
+                elif "postback" in event:
+                    postback_payload = event["postback"]["payload"]
+                    print(f"🔹 Postback received: {postback_payload}")
+                   # reply_facebook_message(sender_id, postback_payload)
     return "EVENT_RECEIVED", 200
 
 
@@ -713,7 +716,7 @@ def display_node(line_bot_api, tk, user_id, msg,platform="LINE"):
         
         #    fetch_next_day(conn, user_id,False)
         isFetch = check_Is_Fetch(conn, user_id)
-        update_confirm(user_id, msg)
+        update_confirm(conn,user_id, msg)
         isConfirm = read_confirm(conn, user_id)
         print(f'isConfirm: {isConfirm}')
         if isFetch == True:
@@ -726,7 +729,7 @@ def display_node(line_bot_api, tk, user_id, msg,platform="LINE"):
        #     updateCheckConfirm(line_bot_api, tk, conn, user_id)
            # fetch_next_day(conn, user_id,False)
         if msg != "Hello" and phase == False:
-            updateisFetch(line_bot_api, tk, conn, user_id,count)
+            updateisFetch(conn, user_id,count)
             if node_var:
                 update_user_variable(conn,user_id,node_var,msg)
             if node_rel_var:
@@ -762,7 +765,7 @@ def display_node(line_bot_api, tk, user_id, msg,platform="LINE"):
                 send_node_info(line_bot_api, tk, conn, node_id, node_step, day_step,user_id)
             else:
                 send_node_info(line_bot_api=None, tk=None, conn=conn, node_id=node_id, node_step=node_step, day_step=day_step,user_id=user_id)
-            resetCount(conn,line_bot_api, tk, user_id, count)
+            resetCount(conn, user_id, count)
         print(f'isEnd2:{isEnd}')
         if isEnd:
             update_user_phase(conn, user_id,True)
@@ -1015,7 +1018,7 @@ def update_count(conn, user_id, count):
         WHERE n.userID = $user_id
         SET n.questionCount = $count
     """
-    count = checkCount(line_bot_api, tk, conn, user_id)
+    count = checkCount(conn, user_id)
     if count < 10:
         count = count + 1
     else:
@@ -1332,8 +1335,8 @@ def fetch_answer(conn, user_id,node_id,question_tag,day_step):
 
 def fetch_next_node(conn, current_node_id, msg, day_step,user_id):
     isEnd = check_end_node(conn, current_node_id)
-    count = checkCount(line_bot_api, conn, user_id) 
-    phase = checkPhase(line_bot_api, conn, user_id)
+    count = checkCount(conn, user_id) 
+    phase = checkPhase(conn, user_id)
     if phase == False:
         node_label = f"d{day_step}"
         query = f'''
@@ -1593,61 +1596,67 @@ def send_facebook_messages(user_id,entity_data):
         "Content-Type": "application/json",
         "Authorization": f"Bearer {PAGE_ACCESS_TOKEN}"
     }
-
-    messages = []
-
- # ✅ ส่งข้อความ (Text)
     if entity_data.get("name"):
-        messages.append({"type": "text", "text": entity_data["name"]})
+        payload = {"recipient": {"id": user_id}, "message": {"text": entity_data["name"]}}
+        send_message(payload,url,headers)
+
     if entity_data.get("name2"):
-        messages.append({"type": "text", "text": entity_data["name2"]})
+        payload = {"recipient": {"id": user_id}, "message": {"text": entity_data["name2"]}}
+        send_message(payload,url,headers)
 
  # ✅ ส่งรูปภาพ (Image)
     if entity_data.get("photo"):
-        messages.append({
-            "type": "image",
-            "payload": {"url": entity_data["photo"], "is_reusable": True}
-        })
+        payload = {
+ "recipient": {"id": user_id},
+ "message": {
+ "attachment": {"type": "image", "payload": {"url": entity_data["photo"], "is_reusable": True}}
+ }
+ }
+        send_message(payload,url,headers)
+
     if entity_data.get("photo2"):
-        messages.append({
-            "type": "image",
-            "payload": {"url": entity_data["photo2"], "is_reusable": True}
-        })
+        payload = {
+ "recipient": {"id": user_id},
+ "message": {
+ "attachment": {"type": "image", "payload": {"url": entity_data["photo2"], "is_reusable": True}}
+ }
+ }
+        send_message(payload,url,headers)
 
  # ✅ ส่งวิดีโอ (Video)
     if entity_data.get("video"):
-        messages.append({
-            "type": "video",
-            "payload": {"url": entity_data["video"], "is_reusable": True}
-        })
+        payload = {
+ "recipient": {"id": user_id},
+ "message": {
+ "attachment": {"type": "video", "payload": {"url": entity_data["video"], "is_reusable": True}}
+ }
+ }
+        send_message(payload,url,headers)
 
  # ✅ ส่ง Quick Reply
     if entity_data.get("quickreply"):
         quick_reply_buttons = [
-            {"content_type": "text", "title": c, "payload": c} 
-            for c in entity_data["choices"] if c.strip()
-            ]
-        messages.append({
-            "type": "text",
-            "text": entity_data["quickreply"],
-            "quick_replies": quick_reply_buttons
-            })
-
- # ✅ ส่งข้อความทั้งหมด (สูงสุด 5 ข้อความ)
-    for message in messages[:5]:
+ {"content_type": "text", "title": c, "payload": c} 
+ for c in entity_data["choices"] if c.strip()
+ ]
         payload = {
-            "recipient": {"id": sender_id},
-            "message": message,
-            "messaging_type": "RESPONSE"
+ "recipient": {"id": user_id},
+ "message": {
+ "text": entity_data["quickreply"],
+ "quick_replies": quick_reply_buttons
  }
-    response = requests.post(url, headers=headers, json=payload)
+ }
+        send_message(payload,url,headers)
 
+
+
+def send_message(payload,url,headers):
+    response = requests.post(url, headers=headers, json=payload)
     if response.status_code == 200:
         print("✅ Message sent successfully!")
     else:
         print(f"❌ Failed to send message: {response.status_code} - {response.text}")
-
-
+    #time.sleep(1)
 
 def send_messages(line_bot_api, tk, entity_data):
     print(entity_data["video"])
