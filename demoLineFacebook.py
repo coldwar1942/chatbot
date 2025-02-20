@@ -18,6 +18,8 @@ from linebot.v3.webhooks import (
     TextMessageContent
 )
 import pandas as pd
+import uuid
+import urllib.parse
 from sentence_transformers import SentenceTransformer
 import faiss
 import numpy as np
@@ -65,6 +67,8 @@ CACHE_FILE = "cached_data.json"
 
 VERIFY_TOKEN = "my_secure_token"
 PAGE_ACCESS_TOKEN = "EAAQCN5Nd2sMBOZBtKRnpZAxN7dSBKlZAIITbAwWPoHPpUluVXDhz89xhifwoId5u07LNbPTkZAPh5rTQX37mxkLAYn32orBXZBICj30AB0gCTnFnOiRb0ifBcMmsuvypNMd970QjnArIQHyboyhb66U7vvOl0jidFgObpqTsk8hEPZBThLhjkiYMZCsDFktOwf96wJCpNzhgM1G2yx0pQZDZD"
+
+last_watermark = None
 #@app.route("/callback", methods=['POST'])
 #def callback():
     # get X-Line-Signature header value
@@ -464,21 +468,34 @@ def send_flex_message():
 
 @app.route('/webhook', methods=['POST'])
 def webhook():
+    global last_watermark
     body = request.get_json()
     print("📩 Received:", body)
 
     if body.get("object") == "page":
         for entry in body.get("entry", []):
             for event in entry.get("messaging", []):
-                
-                if "message" in event and "text" in event["message"]:
-                    sender_id = event["sender"]["id"]
-                    user_message = event["message"]["text"]
-                    reply_facebook_message(sender_id, user_message)
-                elif "postback" in event:
-                    postback_payload = event["postback"]["payload"]
-                    print(f"🔹 Postback received: {postback_payload}")
-                   # reply_facebook_message(sender_id, postback_payload)
+                if "read" in event:
+                    watermark = event["read"]["watermark"]
+                    if watermark == last_watermark:
+                        print("🔁 Received duplicate read event, skipping.")
+                        continue
+                    last_watermark = watermark
+                    print(f"📖 Read receipt received with watermark: {watermark}")
+                print("🔹 Event Data:", event)           
+              #  if "message" in event and event["message"].get("is_echo"):
+                if "message" in event:
+                    message_data = event["message"]
+                    if message_data.get("is_echo") or "app_id" in message_data:
+                        print(f"❌ Ignoring Bot Message from: {event['sender']['id']}")
+                        continue
+                    if "delivery" in event:
+                        print("🚚 Delivery confirmation received, skipping.")
+                        continue
+                    if "text" in message_data:
+                        sender_id = event["sender"]["id"]
+                        user_message = event["message"]["text"]
+                        reply_facebook_message(sender_id, user_message)
     return "EVENT_RECEIVED", 200
 
 
@@ -642,12 +659,25 @@ def reply_facebook_message(sender_id, msg):
     #if( msg == "Hello"):
         exists = conn.check_property(node_label, property_name, sender_id)
         if exists:
-            display_node(line_bot_api=None,tk=None,user_id=sender_id,msg=msg,platform="Facebook")
+            if check_facebook_display(conn, sender_id):
+                display_node(line_bot_api=None,tk=None,user_id=sender_id,msg=msg,platform="Facebook")
             
         else:
             create_facebook_user_node(driver, sender_id)
             getFacebookDisplayName(conn, sender_id)
             display_node(line_bot_api=None,tk=None,user_id=sender_id,msg=msg,platform="Facebook")
+
+def check_facebook_display(conn, user_id):
+    query = '''
+    MATCH (n:user)
+    WHERE n.userID = $user_id
+    RETURN n.p_display_name AS p_display_name
+    '''
+    result = conn.query(query, parameters={'user_id': user_id}, single=True)
+    if result:
+        return result['p_display_name']
+    return None
+
 
 def getFacebookDisplayName(conn, user_id):            
     query = '''
@@ -1654,6 +1684,7 @@ def send_facebook_messages(user_id,entity_data):
         "Content-Type": "application/json",
         "Authorization": f"Bearer {PAGE_ACCESS_TOKEN}"
     }
+    print(f"✅✅✅✅✅✅entitydata={entity_data}")
     if entity_data["name"]:
     #if entity_data.get("name"):
         payload = {"recipient": {"id": user_id}, "message": {"text": entity_data["name"]}}
@@ -1680,23 +1711,32 @@ def send_facebook_messages(user_id,entity_data):
 
     if entity_data["photo2"]:
    # if entity_data.get("photo2"):
+        attachment_id = get_attachment_id(entity_data["photo2"])
         payload = {
  "recipient": {"id": user_id},
  "message": {
- "attachment": {"type": "image", "payload": {"url": entity_data["photo2"], "is_reusable": True}}
+ "attachment": {"type": "image", "payload": {"attachment_id": attachment_id}}
  }
  }
         send_message(payload,url,headers)
 
  # ✅ ส่งวิดีโอ (Video)
     if entity_data["video"]:
-#    if entity_data.get("video"):
+#    iif entity_data.get("video"):
+       # video_id = upload_video_to_facebook(entity_data["video"])
         payload = {
- "recipient": {"id": user_id},
- "message": {
- "attachment": {"type": "video", "payload": {"url": entity_data["video"], "is_reusable": True}}
- }
- }
+        "recipient": {"id": user_id},
+        "message": {
+            "attachment": {
+                "type": "video",
+                "payload": {
+                    "url": "https://demovideo071.s3.amazonaws.com/VDOwDay1F.mp4",
+                    "is_reusable": True
+                    }
+                }
+            },
+            "access_token": PAGE_ACCESS_TOKEN
+        } 
         send_message(payload,url,headers)
 
  # ✅ ส่ง Quick Reply
@@ -1776,7 +1816,7 @@ def upload_to_facebook(image_path):
     response = requests.post(url, headers=headers, files=files, data=data)
     result = response.json()
     #Delete
-    os.remove(image_path)
+    #os.remove(image_path)
     if "attachment_id" in result:
         attachment_id = result["attachment_id"]
         print(f"✅ Uploaded PNG successfully! Attachment ID: {attachment_id}")
@@ -1790,14 +1830,41 @@ def get_attachment_id(image_url):
     attachment_id = get_attachment_id_from_neo4j(image_url)
     if attachment_id:
         return attachment_id
-    png_path = convert_jpeg_to_png(image_url)
+    
+    #png_path = convert_jpeg_to_png(image_url)
+    png_path = download_image(image_url)
     if png_path:
+        save_path_to_neo4j(image_url, png_path)
         attachment_id = upload_to_facebook(png_path)
         if attachment_id:
             save_attachment_id_to_neo4j(image_url, attachment_id)
-        return attachment_id
+            return attachment_id
+
     return None
 
+def download_image(image_url):
+    if check_image_from_neo4j(image_url):
+        print(f"Image URL {image_url} already exists in Neo4j. Skipping download.")
+        return None
+    unique_id = uuid.uuid4()
+    save_path = f"/home/ecoadmin/workspace/chatbot/images/downloaded_image_{unique_id}.jpg"
+    response = requests.get(image_url)
+    if response.status_code == 200:
+        with open(save_path, 'wb') as file:
+            file.write(response.content)
+        print(f"Image successfully downloaded and saved to {save_path}")
+        return save_path
+    else:
+        print(f"Failed to download image. Status code: {response.status_code}")
+
+def check_image_from_neo4j(image_url):
+    query = '''
+        MATCH (img:ImageCache {url: $image_url})
+        RETURN true
+    '''
+    conn = Neo4jConnection(uri, user, password)
+    record = conn.query(query, parameters={'image_url': image_url}, single=True)
+    return record is not None
 
 
 def get_attachment_id_from_neo4j(image_url):
@@ -1810,6 +1877,16 @@ def get_attachment_id_from_neo4j(image_url):
         return result['attachment_id']
     return None
 
+def save_path_to_neo4j(image_url, png_path):
+    conn = Neo4jConnection(uri, user, password)
+    query = '''
+    MERGE (image:ImageCache {url: $image_url})
+    SET image.image_path = $png_path
+    RETURN image
+    '''
+    with conn._driver.session() as session:
+        conn.query(query, parameters={'image_url':image_url,'png_path': png_path})
+
 def save_attachment_id_to_neo4j(image_url, attachment_id):
     conn = Neo4jConnection(uri, user, password)
     query = '''
@@ -1819,6 +1896,32 @@ def save_attachment_id_to_neo4j(image_url, attachment_id):
     '''
     with conn._driver.session() as session:
         conn.query(query, parameters={'image_url':image_url,'attachment_id': attachment_id})
+
+
+
+def upload_video_to_facebook(video_url):
+    tk = "EAAQCN5Nd2sMBO8IZCpQyifR67i53AZB2MDZB9mmkXn4JqQaGC41vDEDKPSOdiVR8WjiJfCpXk9QSGdtwodftD7hsbqWSjawaj7633iiqhoLdSI2DVM0jfPkiVaO2N2owkALRbZC5vZAKppUT0XeFl986H73QdZBPnmkR3fQxZAb4ZC2c9mizZB3vp16F1QhYS9ZAi5UsMVNvYZADvKIaS9ahOmgmPiov5kZAnYzQrAZDZD"
+    url = "https://graph.facebook.com/v18.0/me/message_attachments"
+    headers = {"Content-Type": "application/json"}
+    payload = {
+        "message": {
+            "attachment": {
+                "type": "video",
+                "payload": {"url":video_url,"is_reusable": True}
+
+            }
+            },"access_token": tk
+        }
+    response = requests.post(url, headers=headers, json=payload)
+
+    if response.status_code == 200:
+        attachment_id = response.json().get("attachment_id")
+        print(f"✅ Video uploaded successfully! Video ID: {video_id}")
+        return video_id
+    else:
+        print(f"❌ Failed to upload video: {response.status_code} - {response.text}")
+        return None
+
 
 def send_video_message(user_id, video_url, thumbnail_url):
     video_message = VideoSendMessage(
