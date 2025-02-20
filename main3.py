@@ -36,7 +36,7 @@ def job():
     print(time_str)  
     cypher_query = '''
     MATCH (n:user) 
-    return n.pushTime as time,n.userID as UID;
+    return n.pushTime as time,n.userID as UID,n.platform as platform;
     '''
     cypher_query2 = ''' 
     MATCH (n:d1) return n.name as text;
@@ -49,8 +49,9 @@ def job():
         for record in results:
             push_time = record['time']
             user_id = record['UID']
+            platform = record['platform']
             #print(f"Time: {record['time']}, UID: {record['UID']}")
-            users.append({'userID': user_id, 'pushTime': push_time})
+            users.append({'userID': user_id, 'pushTime': push_time, 'platform':platform})
         #using set() to remove duplicated from list
         print(users)
        # Entity_corpus = list(set(Entity_corpus))
@@ -61,12 +62,13 @@ def job():
     for user in users:
         user_id = user['userID']
         push_time = user['pushTime']
+        platform = user['platform']
         hour = push_time#[:2]
         print(hour)
         if (time_str != time_compare and int(time_str) % int(hour) == 0):
-            run_flask_app(user_id)
-        time_compare = time_str
-
+            run_flask_app(user_id,platform)
+        #time_compare = time_str
+    time_compare = time_str
     #for entity in Entity_corpus2:
      #   print(f"Text1: {entity}")
 
@@ -83,14 +85,15 @@ def job():
 
 schedule.every(5).seconds.do(job)
 
-def run_flask_app(user_id):
+def run_flask_app(user_id,platform):
     #subprocess.run(["python", "flask_app.py"])
    # with flask_app.app.test_client() as client:
       #  response = client.get('/send_message_with_id')
      #   print(response.data.decode())
     url = 'http://127.0.0.1:8080/push_message_with_id'
     data = {
-            'user_id': user_id
+            'user_id': user_id,
+            'platform':platform
         }
     response = requests.post(url, json=data)
     print('Response status code:', response.status_code)
