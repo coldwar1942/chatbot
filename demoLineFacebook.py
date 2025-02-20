@@ -67,8 +67,9 @@ CACHE_FILE = "cached_data.json"
 
 VERIFY_TOKEN = "my_secure_token"
 PAGE_ACCESS_TOKEN = "EAAQCN5Nd2sMBOZBtKRnpZAxN7dSBKlZAIITbAwWPoHPpUluVXDhz89xhifwoId5u07LNbPTkZAPh5rTQX37mxkLAYn32orBXZBICj30AB0gCTnFnOiRb0ifBcMmsuvypNMd970QjnArIQHyboyhb66U7vvOl0jidFgObpqTsk8hEPZBThLhjkiYMZCsDFktOwf96wJCpNzhgM1G2yx0pQZDZD"
-
-last_watermark = None
+#PAGE_ACCESS_TOKEN = "EAAQCN5Nd2sMBOzvMRYOZAHavHPQGdEosjYTKefKOoeZBGzWjeL9VWPWQWmyS15I6mosrwlyZBMqwdbLjQh3lxyiILutIxneFak3DnEfZC9sTqf4MUCuhEZBki4kDpABNBenzxZAaCt659stt4YZCZA3ajSZCd9yv1zHy1FYMt5ytzYnPgz9rnTyp8QmmizkhmMF8xEOGzWXmkUCV61QEgsvExMYoTsZC4Bw0efdQZDZD"
+last_watermark = 0
+last_message_id = None
 #@app.route("/callback", methods=['POST'])
 #def callback():
     # get X-Line-Signature header value
@@ -262,12 +263,16 @@ index = faiss.IndexFlatL2(vector_dimension)
 faiss.normalize_L2(vectors)
 index.add(vectors) '''
 
-def push_line_message(conn,user_id, message_text,line_bot_api):
+def push_line_message(conn,user_id, message_text,user_platform):
     line_api_url = 'https://api.line.me/v2/bot/message/push'
     url = "https://graph.facebook.com/v18.0/me/messages"
     headers = {
             'Content-Type': 'application/json',
             'Authorization': f'Bearer {PAGE_ACCESS_TOKEN}'
+            }
+    headers2 = {
+        'Content-Type': 'application/json',
+        'Authorization': f'Bearer {CHANNEL_ACCESS_TOKEN}'
             }
     payload = {
             'to': user_id,
@@ -317,14 +322,16 @@ def push_line_message(conn,user_id, message_text,line_bot_api):
             }
         })
 #    fetch_next_day(conn,user_id)
-    if line_bot_api is not None:
+    print(f"✅✅✅✅✅✅✅user_platform={user_platform}")
+    if user_platform == "LINE":
         if messages:
             payload = {
             "to": user_id,
             "messages": messages[:5]  # ส่งได้สูงสุด 5 ข้อความ
         }
-            response = requests.post(line_api_url, headers=headers, json=payload)
+            response = requests.post(line_api_url, headers=headers2, json=payload)
 
+            print("📤 LINE API Response:", response.status_code, response.json())
             if response.status_code == 200:
                 print("✅ Message sent successfully!")
             else:
@@ -341,18 +348,20 @@ def push_line_message(conn,user_id, message_text,line_bot_api):
                 payload = {"recipient": {"id": user_id}, "message": {"text": entity_data["name2"]}}
                 send_message(payload,url,headers)
             if entity_data.get("photo"):
+                attachment_id = get_attachment_id(entity_data["photo"])
                 payload = {
                     "recipient": {"id": user_id},
                     "message": {
-                        "attachment": {"type": "image", "payload": {"url": entity_data["photo"], "is_reusable": True}}
+                        "attachment": {"type": "image", "payload": {"attachment_id": attachment_id}}
                     }
                 }
                 send_message(payload,url,headers)
             if entity_data.get("photo2"):
+                attachment_id = get_attachment_id(entity_data["photo2"])
                 payload = {
                         "recipient": {"id": user_id},
                         "message": {
-                            "attachment": {"type": "image", "payload": {"url": entity_data["photo2"], "is_reusable": True}}
+                            "attachment": {"type": "image", "payload": {"attachment_id": attachment_id}}
                             }}
                 send_message(payload,url,headers)
 
@@ -431,11 +440,11 @@ def push_message_with_id():
         return jsonify({'error': 'user_id is required'}), 400
     #boolean = check_confirm(line_bot_api, tk, conn, user_id, msg)
     message_text = "โปรดส่งข้อความเพื่อดำเนินการวันถัดไป"
-    
+    print(f"📩📩📩📩📩📩📩📩📩platform {user_platform}")    
     if user_platform == "LINE":
-        status_code, response_text = push_line_message(conn,user_id, message_text,line_bot_api)
+        status_code, response_text = push_line_message(conn,user_id, message_text,user_platform)
     else:
-        status_code, response_text = push_line_message(conn,user_id, message_text,line_bot_api=None)
+        status_code, response_text = push_line_message(conn,user_id, message_text,user_platform)
     if status_code == 200:
         print('Message sent successfully!')
         return jsonify({'message': 'Message sent successfully!'}), 200
@@ -471,30 +480,48 @@ def webhook():
     global last_watermark
     body = request.get_json()
     print("📩 Received:", body)
-
+    
     if body.get("object") == "page":
         for entry in body.get("entry", []):
             for event in entry.get("messaging", []):
                 if "read" in event:
                     watermark = event["read"]["watermark"]
-                    if watermark == last_watermark:
+                    if watermark <= last_watermark:
                         print("🔁 Received duplicate read event, skipping.")
                         continue
                     last_watermark = watermark
                     print(f"📖 Read receipt received with watermark: {watermark}")
                 print("🔹 Event Data:", event)           
               #  if "message" in event and event["message"].get("is_echo"):
+                if "delivery" in event:
+                    delivery_watermark = event["delivery"]["watermark"]
+                    if delivery_watermark <= last_watermark:
+                        print("🚚 Duplicate delivery event, skipping.")
+                        continue
+                    last_watermark = delivery_watermark
+                    print(f"✅ Message delivered with watermark: {delivery_watermark}")
+                    continue
                 if "message" in event:
                     message_data = event["message"]
+                    message_id = message_data["mid"]
+                    
                     if message_data.get("is_echo") or "app_id" in message_data:
                         print(f"❌ Ignoring Bot Message from: {event['sender']['id']}")
                         continue
-                    if "delivery" in event:
-                        print("🚚 Delivery confirmation received, skipping.")
-                        continue
+                    #if "delivery" in event:
+                    #    print("🚚 Delivery confirmation received, skipping.")
+                     #   continue
                     if "text" in message_data:
                         sender_id = event["sender"]["id"]
+                        print(f"🚚🚚🚚🚚🚚 userID {sender_id}🚚🚚🚚🚚🚚")
                         user_message = event["message"]["text"]
+                        message_id = message_data["mid"]
+                        last_message_id = get_message_id_from_neo4j(sender_id)
+                        if message_id == last_message_id:
+                            print("🔁 Duplicate message detected, skipping.")
+                            continue
+                       # last_message_id = message_id
+                        save_message_id_to_neo4j(sender_id,message_id)
                         reply_facebook_message(sender_id, user_message)
     return "EVENT_RECEIVED", 200
 
@@ -552,6 +579,27 @@ def linebot():
     except Exception as e:
         print(e) 
     return 'OK'
+
+def get_message_id_from_neo4j(sender_id):
+    conn = Neo4jConnection(uri, user, password)
+    query = '''
+        MATCH (user:user {userID: $user_id})
+        RETURN user.message_id AS message_id
+    '''
+    result = conn.query(query, parameters={'user_id': sender_id}, single=True)
+    if result:
+        return result['message_id']
+    return None
+
+def save_message_id_to_neo4j(user_id,message_id):
+    conn = Neo4jConnection(uri, user, password)
+    query = '''
+    MERGE (user:user {userID: $user_id})
+    SET user.message_id = $message_id
+    '''
+    with conn._driver.session() as session:
+        conn.query(query, parameters={'user_id':user_id,'message_id': message_id})
+
 
 def save_user_message(conn, user_id, msg):
     query = f'''
@@ -659,8 +707,8 @@ def reply_facebook_message(sender_id, msg):
     #if( msg == "Hello"):
         exists = conn.check_property(node_label, property_name, sender_id)
         if exists:
-            if check_facebook_display(conn, sender_id):
-                display_node(line_bot_api=None,tk=None,user_id=sender_id,msg=msg,platform="Facebook")
+        #    if check_facebook_display(conn, sender_id):
+            display_node(line_bot_api=None,tk=None,user_id=sender_id,msg=msg,platform="Facebook")
             
         else:
             create_facebook_user_node(driver, sender_id)
@@ -852,6 +900,7 @@ def display_node(line_bot_api, tk, user_id, msg,platform="LINE"):
             if platform == "LINE":
                 send_node_info(line_bot_api, tk, conn, node_id, node_step, day_step,user_id)
             else:
+                print(f"🔁🔁🔁nodeID={node_id}🔁🔁🔁🔁")
                 send_node_info(line_bot_api=None, tk=None, conn=conn, node_id=node_id, node_step=node_step, day_step=day_step,user_id=user_id)
             resetCount(conn, user_id, count)
         print(f'isEnd2:{isEnd}')
@@ -1425,6 +1474,7 @@ def fetch_next_node(conn, current_node_id, msg, day_step,user_id):
     isEnd = check_end_node(conn, current_node_id)
     count = checkCount(conn, user_id) 
     phase = checkPhase(conn, user_id)
+    
     if phase == False:
         node_label = f"d{day_step}"
         query = f'''
@@ -1432,7 +1482,7 @@ def fetch_next_node(conn, current_node_id, msg, day_step,user_id):
             WHERE id(a) = $node_id  
             OPTIONAL MATCH (a)-[r1:SCORE]->(b1:{node_label})
             OPTIONAL MATCH (a:{node_label})-[r2:NEXT]->(b2:{node_label})
-            WHERE r2.choice = $msg OR r2.choice IS NULL OR r2.choice = ""
+            WHERE TRIM(r2.choice) = TRIM($msg) OR r2.choice IS NULL OR r2.choice = ""
             RETURN 
                 CASE
                     WHEN b1 IS NOT NULL THEN id(b1)
@@ -1609,7 +1659,7 @@ def fetch_entity_data(conn, node_id, node_step,user_id):
         WHERE id(n) = $node_id
         OPTIONAL MATCH (n)-[r:NEXT]->(m)
         OPTIONAL MATCH (n)-[a:ANSWER]->(m)
-        RETURN n.name as name, n.name2 as name2, n.photo as photo, r.choice as choice,r.name as quickreply, coalesce(n.video, '') as video,n.pic1 as pic1,n.pic2 as pic2,n.pic3 as pic3,n.photo2 as photo2
+        RETURN n.name as name, n.name2 as name2, n.photo as photo, r.choice as choice,r.name as quickreply, coalesce(n.video, '') as video,n.pic1 as pic1,n.pic2 as pic2,n.pic3 as pic3,n.photo2 as photo2,n.videof as videof
     '''
     query2 = '''
         MATCH (n:user)
@@ -1617,7 +1667,7 @@ def fetch_entity_data(conn, node_id, node_step,user_id):
         RETURN n.relDay9 as relVar
     '''
     entity = {"name": None, "name2": None, "photo": None,"photo2": None,"quickreply":None, "choices": [],
-              "video":None,"relpic":None}
+              "video":None,"relpic":None,"videof":None}
     
     with conn._driver.session() as session:
         result = session.run(query, parameters={'node_id': node_id})
@@ -1649,6 +1699,7 @@ def fetch_entity_data(conn, node_id, node_step,user_id):
 
             entity["photo2"] = record.get("photo2", entity["photo2"]).strip() if record.get("photo2") else entity["photo2"]
             entity["video"] = record.get("video", entity["video"]).strip() if record.get("video") else entity["video"]
+            entity["videof"] = record.get("videof", entity["videof"]).strip() if record.get("videof") else entity["videof"] 
             if record.get("quickreply") is not None:
                 entity["quickreply"] = record.get("quickreply", entity["quickreply"]).strip()
             if record.get("choice") is not None:
@@ -1721,7 +1772,7 @@ def send_facebook_messages(user_id,entity_data):
         send_message(payload,url,headers)
 
  # ✅ ส่งวิดีโอ (Video)
-    if entity_data["video"]:
+    if entity_data["videof"]:
 #    iif entity_data.get("video"):
        # video_id = upload_video_to_facebook(entity_data["video"])
         payload = {
@@ -1730,7 +1781,7 @@ def send_facebook_messages(user_id,entity_data):
             "attachment": {
                 "type": "video",
                 "payload": {
-                    "url": "https://demovideo071.s3.amazonaws.com/VDOwDay1F.mp4",
+                    "url": entity_data["videof"],
                     "is_reusable": True
                     }
                 }
