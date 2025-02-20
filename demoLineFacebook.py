@@ -21,6 +21,7 @@ import pandas as pd
 from sentence_transformers import SentenceTransformer
 import faiss
 import numpy as np
+import io
 import json
 import re
 import cv2
@@ -43,6 +44,8 @@ from langchain.memory import ConversationBufferMemory
 from langchain.chains import LLMChain
 from langchain.llms import Ollama
 import os
+import time
+from PIL import Image
 app = Flask(__name__)
 
 uri = "neo4j:172.30.81.113:7687"
@@ -61,7 +64,7 @@ CHANNEL_ACCESS_TOKEN = 'odz7P1Pu4YPBKfC2UaRJGzhP671gKFSR7DWrCKkBLCZaMUL4vRs62JDF
 CACHE_FILE = "cached_data.json"
 
 VERIFY_TOKEN = "my_secure_token"
-PAGE_ACCESS_TOKEN = "EAAQCN5Nd2sMBOZBBVpbNb1ze6SsFfHufy9qaP9ZCZCYoa9rIgcaltYSPD9LXSTl9TEb4mmm8xkWrhqWbOV6MWKnRZBfsIuZC7HiIeoY80mbkuZB8UP3bwnTBUyrZBBT68JmprZBSOqYD9CLzeQcNAlQamJXJIrMlmRttO5ZAY8n3oMi3uku9sSwQ5lhRuW1Ov95IYFVmfjy05S3nZAb3YGTAZDZD"
+PAGE_ACCESS_TOKEN = "EAAQCN5Nd2sMBOZBtKRnpZAxN7dSBKlZAIITbAwWPoHPpUluVXDhz89xhifwoId5u07LNbPTkZAPh5rTQX37mxkLAYn32orBXZBICj30AB0gCTnFnOiRb0ifBcMmsuvypNMd970QjnArIQHyboyhb66U7vvOl0jidFgObpqTsk8hEPZBThLhjkiYMZCsDFktOwf96wJCpNzhgM1G2yx0pQZDZD"
 #@app.route("/callback", methods=['POST'])
 #def callback():
     # get X-Line-Signature header value
@@ -201,6 +204,7 @@ class Neo4jConnection:
         except Exception as e:
             print(f"Connection failed: {e}")
             return False
+conn = Neo4jConnection(uri, user, password)
 '''
 results = []
 questions = get_questions(use_cache=True)
@@ -256,9 +260,10 @@ index.add(vectors) '''
 
 def push_line_message(conn,user_id, message_text,line_bot_api):
     line_api_url = 'https://api.line.me/v2/bot/message/push'
+    url = "https://graph.facebook.com/v18.0/me/messages"
     headers = {
             'Content-Type': 'application/json',
-            'Authorization': f'Bearer {CHANNEL_ACCESS_TOKEN}'
+            'Authorization': f'Bearer {PAGE_ACCESS_TOKEN}'
             }
     payload = {
             'to': user_id,
@@ -273,7 +278,7 @@ def push_line_message(conn,user_id, message_text,line_bot_api):
     #node_id = node_data['nodeID']
     #isEnd = check_end_node(conn, node_id)
     
-    phase = checkPhase(line_bot_api, conn, user_id)
+    phase = checkPhase(conn, user_id)
     if phase == False:
         return 204, "No message sent (isConfirm is False)"
     #boolean = check_confirm(line_bot_api,  conn, user_id, msg)
@@ -308,20 +313,68 @@ def push_line_message(conn,user_id, message_text,line_bot_api):
             }
         })
 #    fetch_next_day(conn,user_id)
-    if messages:
-        payload = {
+    if line_bot_api is not None:
+        if messages:
+            payload = {
             "to": user_id,
             "messages": messages[:5]  # ส่งได้สูงสุด 5 ข้อความ
         }
-        response = requests.post(line_api_url, headers=headers, json=payload)
+            response = requests.post(line_api_url, headers=headers, json=payload)
 
-        if response.status_code == 200:
-            print("✅ Message sent successfully!")
-        else:
-            print(f"❌ Failed to send message: {response.status_code} - {response.text}")
+            if response.status_code == 200:
+                print("✅ Message sent successfully!")
+            else:
+                print(f"❌ Failed to send message: {response.status_code} - {response.text}")
     #    updateCheckConfirm(line_bot_api, conn, user_id,False)
-    fetch_next_day(conn,user_id)
-    return 200, "Set Variable"
+        fetch_next_day(conn,user_id)
+        return 200, "Set Variable"
+    else:
+        if messages:
+            if entity_data.get("name"):
+                payload = {"recipient": {"id": user_id}, "message": {"text": entity_data["name"]}}
+                send_message(payload,url,headers)
+            if entity_data.get("name2"):
+                payload = {"recipient": {"id": user_id}, "message": {"text": entity_data["name2"]}}
+                send_message(payload,url,headers)
+            if entity_data.get("photo"):
+                payload = {
+                    "recipient": {"id": user_id},
+                    "message": {
+                        "attachment": {"type": "image", "payload": {"url": entity_data["photo"], "is_reusable": True}}
+                    }
+                }
+                send_message(payload,url,headers)
+            if entity_data.get("photo2"):
+                payload = {
+                        "recipient": {"id": user_id},
+                        "message": {
+                            "attachment": {"type": "image", "payload": {"url": entity_data["photo2"], "is_reusable": True}}
+                            }}
+                send_message(payload,url,headers)
+
+            if entity_data.get("video"):
+                payload = {
+                        "recipient": {"id": user_id},
+                        "message": {
+                            "attachment": {"type": "video", "payload": {"url": entity_data["video"], "is_reusable": True}}
+                            }}
+                send_message(payload,url,headers)
+
+            if entity_data.get("quickreply"):
+                quick_reply_buttons = [
+                        {"content_type": "text", "title": c, "payload": c}
+                        for c in entity_data["choices"] if c.strip()
+                        ]
+                payload = {
+                        "recipient": {"id": user_id},
+                        "message": {
+                            "text": entity_data["quickreply"],
+                            "quick_replies": quick_reply_buttons
+                            }
+                        }
+                send_message(payload,url,headers)
+            fetch_next_day(conn,user_id)
+            return 200, "Set Variable"
     #else:
      #   return 204, "No message sent (isConfirm is False)" 
 
@@ -368,13 +421,17 @@ def push_message_with_id():
     conn = Neo4jConnection(uri, user, password)
     data = request.get_json()
     user_id = data.get('user_id')
+    user_platform = data.get('platform')
     #msg = "ไม่ใช่"
     if not user_id:
         return jsonify({'error': 'user_id is required'}), 400
     #boolean = check_confirm(line_bot_api, tk, conn, user_id, msg)
     message_text = "โปรดส่งข้อความเพื่อดำเนินการวันถัดไป"
-    status_code, response_text = push_line_message(conn,user_id, message_text,line_bot_api)
-     
+    
+    if user_platform == "LINE":
+        status_code, response_text = push_line_message(conn,user_id, message_text,line_bot_api)
+    else:
+        status_code, response_text = push_line_message(conn,user_id, message_text,line_bot_api=None)
     if status_code == 200:
         print('Message sent successfully!')
         return jsonify({'message': 'Message sent successfully!'}), 200
@@ -413,8 +470,9 @@ def webhook():
     if body.get("object") == "page":
         for entry in body.get("entry", []):
             for event in entry.get("messaging", []):
-                sender_id = event["sender"]["id"]
-                if "message" in event:
+                
+                if "message" in event and "text" in event["message"]:
+                    sender_id = event["sender"]["id"]
                     user_message = event["message"]["text"]
                     reply_facebook_message(sender_id, user_message)
                 elif "postback" in event:
@@ -769,7 +827,7 @@ def display_node(line_bot_api, tk, user_id, msg,platform="LINE"):
         print(f'isEnd2:{isEnd}')
         if isEnd:
             update_user_phase(conn, user_id,True)
-            phase = checkPhase(line_bot_api, conn, user_id)
+            phase = checkPhase(conn, user_id)
             #phase = True
             update_user_progress(conn, user_id, node_id, day_step, node_step, question_tag,isEnd,count,msg,phase)
         #if count > 3:
@@ -792,9 +850,9 @@ def display_node(line_bot_api, tk, user_id, msg,platform="LINE"):
              #   update_count(conn,line_bot_api, tk, user_id, count)
             #if is_question or count == 0 :
             if count > 0 :
-                update_phase(line_bot_api, tk, conn, user_id,count,isFetch)
-                update_count(conn,line_bot_api, tk, user_id, count)
-                count = checkCount(line_bot_api, tk, conn, user_id)
+                update_phase(conn, user_id,count,isFetch)
+                update_count(conn,user_id, count)
+                count = checkCount(conn, user_id)
                 #update_phase(line_bot_api, tk, conn, user_id,count,isFetch)
             #    start_question(line_bot_api, tk, conn, user_id)
                # if msg != "ไม่ใช่":
@@ -806,8 +864,8 @@ def display_node(line_bot_api, tk, user_id, msg,platform="LINE"):
             #update_count(conn,line_bot_api, tk, user_id, count)
             if count == 0:
                # start_question(line_bot_api, tk, conn, user_id)
-                update_count(conn,line_bot_api, tk, user_id, count)
-                update_phase(line_bot_api, tk, conn, user_id,count,isFetch)
+                update_count(conn,user_id, count)
+                update_phase(conn, user_id,count,isFetch)
 
         if isAnswerRel :
             x = traverse_nodes(line_bot_api,tk,conn,wrongAnswers,node_id,user_id)
@@ -1596,25 +1654,32 @@ def send_facebook_messages(user_id,entity_data):
         "Content-Type": "application/json",
         "Authorization": f"Bearer {PAGE_ACCESS_TOKEN}"
     }
-    if entity_data.get("name"):
+    if entity_data["name"]:
+    #if entity_data.get("name"):
         payload = {"recipient": {"id": user_id}, "message": {"text": entity_data["name"]}}
         send_message(payload,url,headers)
 
-    if entity_data.get("name2"):
+    if entity_data["name2"]:
+    #if entity_data.get("name2"):
         payload = {"recipient": {"id": user_id}, "message": {"text": entity_data["name2"]}}
         send_message(payload,url,headers)
 
- # ✅ ส่งรูปภาพ (Image)
-    if entity_data.get("photo"):
+ # ✅ ส่งรูปภาพ (Image)i
+    if entity_data["photo"]:
+        attachment_id = get_attachment_id(entity_data["photo"])
+        if not attachment_id:
+            return
+  #  if entity_data.get("photo"):
         payload = {
  "recipient": {"id": user_id},
  "message": {
- "attachment": {"type": "image", "payload": {"url": entity_data["photo"], "is_reusable": True}}
+ "attachment": {"type": "image", "payload": {"attachment_id": attachment_id}}
  }
  }
         send_message(payload,url,headers)
 
-    if entity_data.get("photo2"):
+    if entity_data["photo2"]:
+   # if entity_data.get("photo2"):
         payload = {
  "recipient": {"id": user_id},
  "message": {
@@ -1624,7 +1689,8 @@ def send_facebook_messages(user_id,entity_data):
         send_message(payload,url,headers)
 
  # ✅ ส่งวิดีโอ (Video)
-    if entity_data.get("video"):
+    if entity_data["video"]:
+#    if entity_data.get("video"):
         payload = {
  "recipient": {"id": user_id},
  "message": {
@@ -1634,7 +1700,8 @@ def send_facebook_messages(user_id,entity_data):
         send_message(payload,url,headers)
 
  # ✅ ส่ง Quick Reply
-    if entity_data.get("quickreply"):
+    if entity_data["quickreply"] is not None:
+   # if entity_data.get("quickreply"):
         quick_reply_buttons = [
  {"content_type": "text", "title": c, "payload": c} 
  for c in entity_data["choices"] if c.strip()
@@ -1656,7 +1723,7 @@ def send_message(payload,url,headers):
         print("✅ Message sent successfully!")
     else:
         print(f"❌ Failed to send message: {response.status_code} - {response.text}")
-    #time.sleep(1)
+    time.sleep(1)
 
 def send_messages(line_bot_api, tk, entity_data):
     print(entity_data["video"])
@@ -1688,6 +1755,70 @@ def send_messages(line_bot_api, tk, entity_data):
         line_bot_api.reply_message(tk, messages)
     else:
         print("No valid messages to send2222")
+def convert_jpeg_to_png(image_url):
+    response = requests.get(image_url, stream=True)
+    if response.status_code == 200:
+        image = Image.open(io.BytesIO(response.content))
+        image = image.convert("RGBA")
+        png_path = "temp_image.png"
+        image.save(png_path, format="PNG")
+        print("✅ Converted JPEG to PNG successfully!")
+        return png_path
+    else:
+        print("❌ Failed to download image")
+        return None
+
+def upload_to_facebook(image_path):
+    url = "https://graph.facebook.com/v18.0/me/message_attachments"
+    headers = {"Authorization": f"Bearer {PAGE_ACCESS_TOKEN}"}
+    files = {"filedata": (image_path, open(image_path, "rb"), "image/png")}
+    data = {"message": '{"attachment":{"type":"image", "payload":{"is_reusable":true}}}'}
+    response = requests.post(url, headers=headers, files=files, data=data)
+    result = response.json()
+    #Delete
+    os.remove(image_path)
+    if "attachment_id" in result:
+        attachment_id = result["attachment_id"]
+        print(f"✅ Uploaded PNG successfully! Attachment ID: {attachment_id}")
+        return attachment_id
+    else:
+        print(f"❌ Upload failed: {result}")
+        return None
+
+
+def get_attachment_id(image_url):
+    attachment_id = get_attachment_id_from_neo4j(image_url)
+    if attachment_id:
+        return attachment_id
+    png_path = convert_jpeg_to_png(image_url)
+    if png_path:
+        attachment_id = upload_to_facebook(png_path)
+        if attachment_id:
+            save_attachment_id_to_neo4j(image_url, attachment_id)
+        return attachment_id
+    return None
+
+
+
+def get_attachment_id_from_neo4j(image_url):
+    query = '''
+    MATCH (image:ImageCache {url: $image_url})
+    RETURN image.attachment_id AS attachment_id
+    '''
+    result = conn.query(query, parameters={'image_url': image_url}, single=True)
+    if result:
+        return result['attachment_id']
+    return None
+
+def save_attachment_id_to_neo4j(image_url, attachment_id):
+    conn = Neo4jConnection(uri, user, password)
+    query = '''
+    MERGE (image:ImageCache {url: $image_url})
+    SET image.attachment_id = $attachment_id
+    RETURN image
+    '''
+    with conn._driver.session() as session:
+        conn.query(query, parameters={'image_url':image_url,'attachment_id': attachment_id})
 
 def send_video_message(user_id, video_url, thumbnail_url):
     video_message = VideoSendMessage(
