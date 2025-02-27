@@ -53,15 +53,17 @@ app = Flask(__name__)
 uri = "neo4j:172.30.81.113:7687"
 user = "neo4j"
 password= "password"
-line_bot_api = LineBotApi('odz7P1Pu4YPBKfC2UaRJGzhP671gKFSR7DWrCKkBLCZaMUL4vRs62JDF9sfliaulr3C18QMazzHCXAZPBofFrBjs3schUsCWY9LoIbz0AH3PmGYb0COtKTDDwfqtlgJJ7W3mCN4YnYRwr41BTq6sKgdB04t89/1O/w1cDnyilFU=')
-configuration = Configuration(access_token='odz7P1Pu4YPBKfC2UaRJGzhP671gKFSR7DWrCKkBLCZaMUL4vRs62JDF9sfliaulr3C18QMazzHCXAZPBofFrBjs3schUsCWY9LoIbz0AH3PmGYb0COtKTDDwfqtlgJJ7W3mCN4YnYRwr41BTq6sKgdB04t89/1O/w1cDnyilFU=')
-handler = WebhookHandler('29e4dc7397d37e92d3a17cf5f459364b')
-
+#line_bot_api = LineBotApi('odz7P1Pu4YPBKfC2UaRJGzhP671gKFSR7DWrCKkBLCZaMUL4vRs62JDF9sfliaulr3C18QMazzHCXAZPBofFrBjs3schUsCWY9LoIbz0AH3PmGYb0COtKTDDwfqtlgJJ7W3mCN4YnYRwr41BTq6sKgdB04t89/1O/w1cDnyilFU=')
+line_bot_api = LineBotApi('1ZFUYhkMv3OwtAmw5VwADq6iKw4tFgA4Z1cUj57aMz6Mk4VpZ864QzvnK9lX/J7Ajvqqz7cZTjN7BCnTj+2Uo34XCNM2yt+qDuJlMVZLk3h9MBnUZm67aXXH+kuTMw5HOdu4/jDeR9PAYUlz+2BW5wdB04t89/1O/w1cDnyilFU=')
+#configuration = Configuration(access_token='odz7P1Pu4YPBKfC2UaRJGzhP671gKFSR7DWrCKkBLCZaMUL4vRs62JDF9sfliaulr3C18QMazzHCXAZPBofFrBjs3schUsCWY9LoIbz0AH3PmGYb0COtKTDDwfqtlgJJ7W3mCN4YnYRwr41BTq6sKgdB04t89/1O/w1cDnyilFU=')
+#handler = WebhookHandler('29e4dc7397d37e92d3a17cf5f459364b')
+configuration = Configuration(access_token='1ZFUYhkMv3OwtAmw5VwADq6iKw4tFgA4Z1cUj57aMz6Mk4VpZ864QzvnK9lX/J7Ajvqqz7cZTjN7BCnTj+2Uo34XCNM2yt+qDuJlMVZLk3h9MBnUZm67aXXH+kuTMw5HOdu4/jDeR9PAYUlz+2BW5wdB04t89/1O/w1cDnyilFU=')
+handler = WebhookHandler('1ccea62f0a9056136c4d3d29c4728569')
 driver = GraphDatabase.driver(
         "neo4j://172.30.81.113:7687",
         auth=basic_auth("neo4j", "password"))
-
-CHANNEL_ACCESS_TOKEN = 'odz7P1Pu4YPBKfC2UaRJGzhP671gKFSR7DWrCKkBLCZaMUL4vRs62JDF9sfliaulr3C18QMazzHCXAZPBofFrBjs3schUsCWY9LoIbz0AH3PmGYb0COtKTDDwfqtlgJJ7W3mCN4YnYRwr41BTq6sKgdB04t89/1O/w1cDnyilFU='
+CHANNEL_ACCESS_TOKEN = '1ZFUYhkMv3OwtAmw5VwADq6iKw4tFgA4Z1cUj57aMz6Mk4VpZ864QzvnK9lX/J7Ajvqqz7cZTjN7BCnTj+2Uo34XCNM2yt+qDuJlMVZLk3h9MBnUZm67aXXH+kuTMw5HOdu4/jDeR9PAYUlz+2BW5wdB04t89/1O/w1cDnyilFU='
+#CHANNEL_ACCESS_TOKEN = 'odz7P1Pu4YPBKfC2UaRJGzhP671gKFSR7DWrCKkBLCZaMUL4vRs62JDF9sfliaulr3C18QMazzHCXAZPBofFrBjs3schUsCWY9LoIbz0AH3PmGYb0COtKTDDwfqtlgJJ7W3mCN4YnYRwr41BTq6sKgdB04t89/1O/w1cDnyilFU='
 
 CACHE_FILE = "cached_data.json"
 
@@ -299,8 +301,12 @@ def push_line_message(conn,user_id, message_text,user_platform):
     if node_data:
         node_id, day_step, node_step = node_data['nodeID'], node_data['dayStep'], node_data['nodeStep']
         entity_data = fetch_entity_data(conn, node_id, node_step,user_id)
-    if day_step == 4:
-        return 204, "No message sent (isConfirm is False)"
+    #if day_step == 0:
+        #reset_day(conn, user_id)
+       # node_data = fetch_user_node_data(conn, user_id)
+        #node_id, day_step, node_step = node_data['nodeID'], node_data['dayStep'], node_data['nodeStep']
+        #entity_data = fetch_entity_data(conn, node_id, node_step,user_id)
+        #return 204, "No message sent (isConfirm is False)"
     messages = []
     print(entity_data)
     if entity_data["name"]:
@@ -513,6 +519,8 @@ def webhook():
                      #   continue
                     if "text" in message_data:
                         sender_id = event["sender"]["id"]
+                        if sender_id.startswith("3"):
+                            continue
                         print(f"🚚🚚🚚🚚🚚 userID {sender_id}🚚🚚🚚🚚🚚")
                         user_message = event["message"]["text"]
                         message_id = message_data["mid"]
@@ -521,8 +529,9 @@ def webhook():
                             print("🔁 Duplicate message detected, skipping.")
                             continue
                        # last_message_id = message_id
-                        save_message_id_to_neo4j(sender_id,message_id)
+                        #save_message_id_to_neo4j(sender_id,message_id)
                         reply_facebook_message(sender_id, user_message)
+                        save_message_id_to_neo4j(sender_id,message_id)
     return "EVENT_RECEIVED", 200
 
 
@@ -531,8 +540,10 @@ def linebot():
     body = request.get_data(as_text=True)
     try:
         json_data = json.loads(body)
-        access_token = 'odz7P1Pu4YPBKfC2UaRJGzhP671gKFSR7DWrCKkBLCZaMUL4vRs62JDF9sfliaulr3C18QMazzHCXAZPBofFrBjs3schUsCWY9LoIbz0AH3PmGYb0COtKTDDwfqtlgJJ7W3mCN4YnYRwr41BTq6sKgdB04t89/1O/w1cDnyilFU='
-        secret = '29e4dc7397d37e92d3a17cf5f459364b'
+        access_token = '1ZFUYhkMv3OwtAmw5VwADq6iKw4tFgA4Z1cUj57aMz6Mk4VpZ864QzvnK9lX/J7Ajvqqz7cZTjN7BCnTj+2Uo34XCNM2yt+qDuJlMVZLk3h9MBnUZm67aXXH+kuTMw5HOdu4/jDeR9PAYUlz+2BW5wdB04t89/1O/w1cDnyilFU='
+        #access_token = 'odz7P1Pu4YPBKfC2UaRJGzhP671gKFSR7DWrCKkBLCZaMUL4vRs62JDF9sfliaulr3C18QMazzHCXAZPBofFrBjs3schUsCWY9LoIbz0AH3PmGYb0COtKTDDwfqtlgJJ7W3mCN4YnYRwr41BTq6sKgdB04t89/1O/w1cDnyilFU='
+        secret = '1ccea62f0a9056136c4d3d29c4728569'
+        #secret = '29e4dc7397d37e92d3a17cf5f459364b'
         line_bot_api = LineBotApi(access_token)
         handler = WebhookHandler(secret)
         signature = request.headers['X-Line-Signature']
@@ -593,6 +604,12 @@ def get_message_id_from_neo4j(sender_id):
 
 def save_message_id_to_neo4j(user_id,message_id):
     conn = Neo4jConnection(uri, user, password)
+  #  query = '''
+   #     MERGE (user:user {userID: $user_id,nodeID:0,dayStep:1,questionCount:0,
+    #    phase:false,fetchNext:false,confirm:false,pushTime:1,platform:"Facebook"})
+     #   SET user.message_id = $message_id
+   # '''
+
     query = '''
     MERGE (user:user {userID: $user_id})
     SET user.message_id = $message_id
@@ -796,7 +813,7 @@ def check_user_id(line_bot_api,tk,user_id,msg):
 
 def create_user_node(driver,variable_value):
     query = '''
-        CREATE (n:user {nodeID:0,dayStep:1,userID : $userID,questionCount:0,
+        CREATE (n:user {nodeID:624,dayStep:0,userID : $userID,questionCount:0,
         phase:false,fetchNext:false,confirm:false,pushTime:1,platform:"LINE"})
     '''
     parameters = {"userID": variable_value}
@@ -822,8 +839,9 @@ def display_node(line_bot_api, tk, user_id, msg,platform="LINE"):
     if node_data:
         node_id, day_step, node_step = node_data['nodeID'], node_data['dayStep'], node_data['nodeStep'] 
         print(f'daystep is {day_step}')
-        if day_step == 4:
-            return 0
+      #  if day_step == 4:
+       #     reset_day(conn, user_id)
+        #    return 0
         node_var = fetch_node_variable(conn, node_id)
         node_rel_var = fetch_rel_node_variable(conn, node_id)
         node_image = fetch_node_image(conn, node_id)
@@ -959,6 +977,13 @@ def display_node(line_bot_api, tk, user_id, msg,platform="LINE"):
         
     else:
         print("No node data found")
+
+def reset_day(conn, user_id):
+    query = f"""
+        MATCH (n:user)
+        WHERE n.userID = $user_id
+        SET n.nodeID = 624,n.daystep = 0
+    """
 
 def update_user_phase(conn, user_id,boolean):
     query = f"""
@@ -1551,6 +1576,8 @@ def update_user_progress(conn, user_id, node_id, day_step, node_step, question_t
     node_label = f"d{day_step}"
     if isEnd and count == 0 :
         day_step = day_step + 1
+        if day_step == 4:
+            day_step = 0;
         node_step = 1
         node_label = f"d{day_step}"
     
@@ -1565,13 +1592,20 @@ def update_user_progress(conn, user_id, node_id, day_step, node_step, question_t
             WHERE a.step = 1
             RETURN id(a) AS node_id
         '''
-  #  if (isEnd and count >= 3) or msg == "Yes":
- #       day_step = day_step + 1
-#        node_step = 1
-        
+    query3 = f'''
+        MATCH (a:user)
+        WHERE a.userID = $user_id
+        SET a.dayStep = 0, a.nodeID = 627
+    '''
+
     if phase == False:
       
         conn.query(query1, parameters={'user_id': user_id, 'day_step': day_step, 'node_id': node_id, 'node_step': node_step})
+    
+    if day_step == 0:
+        conn.query(query3, parameters={'user_id': user_id})
+        return 0 
+
     if phase == True:
         with conn._driver.session() as session:
             print(f"node label is {node_label}")
