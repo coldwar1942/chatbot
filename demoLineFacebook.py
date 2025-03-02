@@ -1573,9 +1573,13 @@ def update_user_progress(conn, user_id, node_id, day_step, node_step, question_t
     #phase = False
     node_label = f"d{day_step}"
     if isEnd and count == 0 :
+        
         day_step = day_step + 1
-        if day_step == 4:
-            day_step = 0;
+     
+        #if day_step == 4:
+ #           day_step = 0;
+  #      if day_step == 4 :
+   #         day_step == 0
         node_step = 1
         node_label = f"d{day_step}"
     
@@ -1598,20 +1602,29 @@ def update_user_progress(conn, user_id, node_id, day_step, node_step, question_t
 
     if phase == False:
       
-        conn.query(query1, parameters={'user_id': user_id, 'day_step': day_step, 'node_id': node_id, 'node_step': node_step})
+        if day_step < 4 :
+            conn.query(query1, parameters={'user_id': user_id, 'day_step': day_step, 'node_id': node_id, 'node_step': node_step})
     
-    if day_step == 0 and phase == True:
-        conn.query(query3, parameters={'user_id': user_id})
-        return 0 
+   # if day_step == 0 and phase == True:
+    #    conn.query(query3, parameters={'user_id': user_id})
+     #   return 0 
     
     if phase == True:
         with conn._driver.session() as session:
             print(f"node label is {node_label}")
-            result = session.run(query2, parameters={'node_label': node_label})
-            record = result.single()  # Fetch the single record from the result
-            node_id = record["node_id"] if record else None
-        if node_id != None:
-            conn.query(query1, parameters={'user_id': user_id, 'day_step': day_step, 'node_id': node_id, 'node_step': node_step})
+            if day_step < 4 :
+                result = session.run(query2, parameters={'node_label': node_label})
+                record = result.single()  # Fetch the single record from the result
+                node_id = record["node_id"] if record else None
+                if node_id != None:
+                    conn.query(query1, parameters={'user_id': user_id, 'day_step': day_step, 'node_id': node_id, 'node_step': node_step})
+
+            else:
+                day_step = 0
+                result = session.run(query3, parameters={'user_id':user_id})
+   #             node_id = 627
+ #       if node_id != None:
+  #          conn.query(query1, parameters={'user_id': user_id, 'day_step': day_step, 'node_id': node_id, 'node_step': node_step})
 
 
 
@@ -1700,10 +1713,18 @@ def fetch_merge_entity_data(conn, node_id, node_step,user_id,day_step):
         WHERE id(n) = $node_id and a.step = 1
         RETURN n.name as name, n.photo as photo,a.name as name2,a.photo as photo2,r.name as quickreply,r.choice as choice
     '''
-    entity = {"name": None, "name2": None, "photo": None,"photo2": None,"quickreply":None, "choices": []}
+    query2 = f'''
+        MATCH (n),(a)
+        WHERE id(n) = 627 and id(a) = $node_id
+        RETURN a.name as name, a.photo as photo,n.name as name2,n.photo as photo2,n.name2 as name3
+    '''
+    entity = {"name": None, "name2": None, "photo": None,"name3":None,"photo2": None,"quickreply":None, "choices": []}
 
     with conn._driver.session() as session:
-        result = session.run(query, parameters={'node_id': node_id})
+        if day_step < 4:
+            result = session.run(query, parameters={'node_id': node_id})
+        else:
+            result = session.run(query2, parameters={'node_id': node_id})
         records = list(result)
         if not records:
             print(f"No records found for node_id: {node_id}")
@@ -1711,6 +1732,7 @@ def fetch_merge_entity_data(conn, node_id, node_step,user_id,day_step):
         for record in records:
             entity["name"] = record.get("name", entity["name"]).strip() if record.get("name") else entity["name"]
             entity["name2"] = record.get("name2", entity["name2"]).strip() if record.get("name2") else entity["name2"]
+            entity["name3"] = record.get("name3", entity["name3"]).strip() if record.get("name3") else entity["name3"]
             entity["photo"] = record.get("photo", entity["photo"]).strip() if record.get("photo") else entity["photo"]
             entity["photo2"] = record.get("photo2", entity["photo2"]).strip() if record.get("photo2") else entity["photo2"]
             if record.get("quickreply") is not None:
@@ -1881,6 +1903,8 @@ def send_merge_messages(line_bot_api, tk, entity_data):
         messages.append(ImageSendMessage(original_content_url=entity_data["photo"], preview_image_url=entity_data["photo"]))
     if entity_data["name2"]:
         messages.append(TextSendMessage(text=entity_data["name2"]))
+    if entity_data["name3"]:
+        messages.append(TextSendMessage(text=entity_data["name3"]))
     if entity_data["photo2"]:
         messages.append(ImageSendMessage(original_content_url=entity_data["photo2"], preview_image_url=entity_data["photo2"]))
     if entity_data["quickreply"] is not None:
