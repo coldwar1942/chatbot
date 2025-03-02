@@ -916,18 +916,16 @@ def display_node(line_bot_api, tk, user_id, msg,platform="LINE"):
         #if showAnswer == False:
         if phase == False:
             if platform == "LINE":
-                send_node_info(line_bot_api, tk, conn, node_id, node_step, day_step,user_id)
+                if not isEnd:
+                    send_node_info(line_bot_api, tk, conn, node_id, node_step, day_step,user_id,isEnd)
+                else:
+                    send_node_info(line_bot_api, tk, conn, node_id, node_step, day_step,user_id,isEnd)
+                    update_user_progress(conn, user_id, node_id, day_step, node_step, question_tag,isEnd,count,msg,True)
             else:
                 print(f"🔁🔁🔁nodeID={node_id}🔁🔁🔁🔁")
                 send_node_info(line_bot_api=None, tk=None, conn=conn, node_id=node_id, node_step=node_step, day_step=day_step,user_id=user_id)
             resetCount(conn, user_id, count)
         print(f'isEnd2:{isEnd}')
-        if isEnd:
-            update_user_phase(conn, user_id,True)
-            phase = checkPhase(conn, user_id)
-            #phase = True
-            update_user_progress(conn, user_id, node_id, day_step, node_step, question_tag,isEnd,count,msg,phase)
-        #if count > 3:
             #phase = False
            # update_count(conn,line_bot_api, tk, user_id, count)
         print(f'phase2:{phase}')
@@ -1602,10 +1600,10 @@ def update_user_progress(conn, user_id, node_id, day_step, node_step, question_t
       
         conn.query(query1, parameters={'user_id': user_id, 'day_step': day_step, 'node_id': node_id, 'node_step': node_step})
     
-    if day_step == 0:
+    if day_step == 0 and phase == True:
         conn.query(query3, parameters={'user_id': user_id})
         return 0 
-
+    
     if phase == True:
         with conn._driver.session() as session:
             print(f"node label is {node_label}")
@@ -1614,6 +1612,8 @@ def update_user_progress(conn, user_id, node_id, day_step, node_step, question_t
             node_id = record["node_id"] if record else None
         if node_id != None:
             conn.query(query1, parameters={'user_id': user_id, 'day_step': day_step, 'node_id': node_id, 'node_step': node_step})
+
+
 
     #else:
      #   conn.query(query2, parameters={'user_id': user_id, 'day_step': day_step, 'node_id': node_id, 'node_step': node_step,'msg':msg})
@@ -1678,14 +1678,47 @@ def check_is_correct(conn,  node_id, msg):
         return record["isCorrect"] if record else None
 
 
-def send_node_info(line_bot_api, tk, conn, node_id, node_step, day_step,user_id):
-    entity_data = fetch_entity_data(conn, node_id, node_step,user_id)
+def send_node_info(line_bot_api, tk, conn, node_id, node_step, day_step,user_id,isEnd=False):
+    if not isEnd:
+        entity_data = fetch_entity_data(conn, node_id, node_step,user_id)
+    else:
+        entity_data = fetch_merge_entity_data(conn, node_id, node_step,user_id,day_step)
     if entity_data:
         entity_data = replace_text_with_variable(conn,user_id,entity_data)
         if line_bot_api != None:
-            send_messages(line_bot_api, tk, entity_data)
+            if not isEnd:
+                send_messages(line_bot_api, tk, entity_data)
+            else:
+                send_merge_messages(line_bot_api, tk, entity_data)
         else:
             send_facebook_messages(user_id,entity_data)
+def fetch_merge_entity_data(conn, node_id, node_step,user_id,day_step):
+    day_step = day_step + 1 
+    node_label = f"d{day_step}"
+    query = f'''
+        MATCH (n),(a:{node_label})-[r:NEXT]->(b)
+        WHERE id(n) = $node_id and a.step = 1
+        RETURN n.name as name, n.photo as photo,a.name as name2,a.photo as photo2,r.name as quickreply,r.choice as choice
+    '''
+    entity = {"name": None, "name2": None, "photo": None,"photo2": None,"quickreply":None, "choices": []}
+
+    with conn._driver.session() as session:
+        result = session.run(query, parameters={'node_id': node_id})
+        records = list(result)
+        if not records:
+            print(f"No records found for node_id: {node_id}")
+            return None
+        for record in records:
+            entity["name"] = record.get("name", entity["name"]).strip() if record.get("name") else entity["name"]
+            entity["name2"] = record.get("name2", entity["name2"]).strip() if record.get("name2") else entity["name2"]
+            entity["photo"] = record.get("photo", entity["photo"]).strip() if record.get("photo") else entity["photo"]
+            entity["photo2"] = record.get("photo2", entity["photo2"]).strip() if record.get("photo2") else entity["photo2"]
+            if record.get("quickreply") is not None:
+                entity["quickreply"] = record.get("quickreply", entity["quickreply"]).strip()
+            if record.get("choice") is not None:
+                entity["choices"].append(record["choice"])
+            return entity if any(value is not None for value in entity.values()) else None
+
 
 def fetch_entity_data(conn, node_id, node_step,user_id):
     query = '''
@@ -1839,6 +1872,28 @@ def send_facebook_messages(user_id,entity_data):
  }
  }
         send_message(payload,url,headers)
+
+def send_merge_messages(line_bot_api, tk, entity_data):
+    messages = []
+    if entity_data["name"]:
+        messages.append(TextSendMessage(text=entity_data["name"]))
+    if entity_data["photo"]:
+        messages.append(ImageSendMessage(original_content_url=entity_data["photo"], preview_image_url=entity_data["photo"]))
+    if entity_data["name2"]:
+        messages.append(TextSendMessage(text=entity_data["name2"]))
+    if entity_data["photo2"]:
+        messages.append(ImageSendMessage(original_content_url=entity_data["photo2"], preview_image_url=entity_data["photo2"]))
+    if entity_data["quickreply"] is not None:
+        quick_reply_buttons = [QuickReplyButton(action=MessageAction(label=c, text=c)) for c in entity_data["choices"]
+        if c.strip()]
+        if quick_reply_buttons:
+            quick_reply = QuickReply(items=quick_reply_buttons)
+            messages.append(TextSendMessage(text=entity_data["quickreply"], quick_reply=quick_reply))
+    if messages:
+
+        line_bot_api.reply_message(tk, messages)
+    else:
+        print("No valid messages to send2222")
 
 
 
