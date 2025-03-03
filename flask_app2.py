@@ -50,13 +50,17 @@ user = "neo4j"
 password= "password"
 line_bot_api = LineBotApi('odz7P1Pu4YPBKfC2UaRJGzhP671gKFSR7DWrCKkBLCZaMUL4vRs62JDF9sfliaulr3C18QMazzHCXAZPBofFrBjs3schUsCWY9LoIbz0AH3PmGYb0COtKTDDwfqtlgJJ7W3mCN4YnYRwr41BTq6sKgdB04t89/1O/w1cDnyilFU=')
 configuration = Configuration(access_token='odz7P1Pu4YPBKfC2UaRJGzhP671gKFSR7DWrCKkBLCZaMUL4vRs62JDF9sfliaulr3C18QMazzHCXAZPBofFrBjs3schUsCWY9LoIbz0AH3PmGYb0COtKTDDwfqtlgJJ7W3mCN4YnYRwr41BTq6sKgdB04t89/1O/w1cDnyilFU=')
-handler = WebhookHandler('29e4dc7397d37e92d3a17cf5f459364b')
 
+handler = WebhookHandler('29e4dc7397d37e92d3a17cf5f459364b')
+#line_bot_api = LineBotApi('1ZFUYhkMv3OwtAmw5VwADq6iKw4tFgA4Z1cUj57aMz6Mk4VpZ864QzvnK9lX/J7Ajvqqz7cZTjN7BCnTj+2Uo34XCNM2yt+qDuJlMVZLk3h9MBnUZm67aXXH+kuTMw5HOdu4/jDeR9PAYUlz+2BW5wdB04t89/1O/w1cDnyilFU=')
+#configuration = Configuration(access_token='1ZFUYhkMv3OwtAmw5VwADq6iKw4tFgA4Z1cUj57aMz6Mk4VpZ864QzvnK9lX/J7Ajvqqz7cZTjN7BCnTj+2Uo34XCNM2yt+qDuJlMVZLk3h9MBnUZm67aXXH+kuTMw5HOdu4/jDeR9PAYUlz+2BW5wdB04t89/1O/w1cDnyilFU=')
+#handler = WebhookHandler('1ccea62f0a9056136c4d3d29c4728569')
 driver = GraphDatabase.driver(
         "neo4j://172.30.81.113:7687",
         auth=basic_auth("neo4j", "password"))
 
-CHANNEL_ACCESS_TOKEN = 'odz7P1Pu4YPBKfC2UaRJGzhP671gKFSR7DWrCKkBLCZaMUL4vRs62JDF9sfliaulr3C18QMazzHCXAZPBofFrBjs3schUsCWY9LoIbz0AH3PmGYb0COtKTDDwfqtlgJJ7W3mCN4YnYRwr41BTq6sKgdB04t89/1O/w1cDnyilFU='
+CHANNEL_ACCESS_TOKEN = '1ZFUYhkMv3OwtAmw5VwADq6iKw4tFgA4Z1cUj57aMz6Mk4VpZ864QzvnK9lX/J7Ajvqqz7cZTjN7BCnTj+2Uo34XCNM2yt+qDuJlMVZLk3h9MBnUZm67aXXH+kuTMw5HOdu4/jDeR9PAYUlz+2BW5wdB04t89/1O/w1cDnyilFU='
+#CHANNEL_ACCESS_TOKEN = 'odz7P1Pu4YPBKfC2UaRJGzhP671gKFSR7DWrCKkBLCZaMUL4vRs62JDF9sfliaulr3C18QMazzHCXAZPBofFrBjs3schUsCWY9LoIbz0AH3PmGYb0COtKTDDwfqtlgJJ7W3mCN4YnYRwr41BTq6sKgdB04t89/1O/w1cDnyilFU='
 
 CACHE_FILE = "cached_data.json"
 #@app.route("/callback", methods=['POST'])
@@ -366,7 +370,9 @@ def linebot():
     body = request.get_data(as_text=True)
     try:
         json_data = json.loads(body)
+        #access_token = '1ZFUYhkMv3OwtAmw5VwADq6iKw4tFgA4Z1cUj57aMz6Mk4VpZ864QzvnK9lX/J7Ajvqqz7cZTjN7BCnTj+2Uo34XCNM2yt+qDuJlMVZLk3h9MBnUZm67aXXH+kuTMw5HOdu4/jDeR9PAYUlz+2BW5wdB04t89/1O/w1cDnyilFU='
         access_token = 'odz7P1Pu4YPBKfC2UaRJGzhP671gKFSR7DWrCKkBLCZaMUL4vRs62JDF9sfliaulr3C18QMazzHCXAZPBofFrBjs3schUsCWY9LoIbz0AH3PmGYb0COtKTDDwfqtlgJJ7W3mCN4YnYRwr41BTq6sKgdB04t89/1O/w1cDnyilFU='
+        #secret = '1ccea62f0a9056136c4d3d29c4728569'
         secret = '29e4dc7397d37e92d3a17cf5f459364b'
         line_bot_api = LineBotApi(access_token)
         handler = WebhookHandler(secret)
@@ -560,7 +566,7 @@ def display_node(line_bot_api, tk, user_id, msg):
     conn = Neo4jConnection(uri, user, password)
      
     node_data = fetch_user_node_data(conn, user_id)
-     
+    
     if node_data:
         node_id, day_step, node_step = node_data['nodeID'], node_data['dayStep'], node_data['nodeStep'] 
         node_var = fetch_node_variable(conn, node_id)
@@ -594,16 +600,19 @@ def display_node(line_bot_api, tk, user_id, msg):
         update_confirm(line_bot_api,  conn, user_id, msg)
         isConfirm = read_confirm(line_bot_api,  conn, user_id)
         print(f'isConfirm: {isConfirm}')
-        if isConfirm == True and isFetch == True:
-            resetCount(conn,line_bot_api, tk, user_id, count)
-            update_phase(line_bot_api, tk, conn, user_id,count,isConfirm)
-            phase = checkPhase(line_bot_api, conn, user_id)
-            count = checkCount(line_bot_api, tk, conn, user_id)
-            updateCheckConfirm(line_bot_api,  conn, user_id,False)
-            updateFetchNext(line_bot_api,  conn, user_id,False)
+#        if isConfirm == True and isFetch == True:
+ #           resetCount(conn,line_bot_api, tk, user_id, count)
+  #          update_phase(line_bot_api, tk, conn, user_id,count,isConfirm)
+   #         phase = checkPhase(line_bot_api, conn, user_id)
+    #        count = checkCount(line_bot_api, tk, conn, user_id)
+     #       updateCheckConfirm(line_bot_api,  conn, user_id,False)
+      #      updateFetchNext(line_bot_api,  conn, user_id,False)
        #     updateCheckConfirm(line_bot_api, tk, conn, user_id)
            # fetch_next_day(conn, user_id,False)
-        if msg != "Hello" and phase == False and isConfirm == False:
+        if day_step == 0:
+            return_message(line_bot_api, tk, user_id, msg)
+            return 0
+        if msg != "Hello" and phase == False :
             updateisFetch(line_bot_api, tk, conn, user_id,count)
             if node_var:
                 update_user_variable(conn,user_id,node_var,msg)
@@ -633,12 +642,16 @@ def display_node(line_bot_api, tk, user_id, msg):
 
         #if showAnswer == False:
         if phase == False:
-            send_node_info(line_bot_api, tk, conn, node_id, node_step, day_step,user_id)
-            resetCount(conn,line_bot_api, tk, user_id, count)
-        print(f'isEnd2:{isEnd}')
-        if isEnd:
-            phase = True
-            update_user_progress(conn, user_id, node_id, day_step, node_step, question_tag,isEnd,count,msg,tk,phase)
+            if not isEnd:
+                send_node_info(line_bot_api, tk, conn, node_id, node_step, day_step,user_id,isEnd)
+            else:
+                send_node_info(line_bot_api, tk, conn, node_id, node_step, day_step,user_id,isEnd)
+                update_user_progress(conn, user_id, node_id, day_step, node_step, question_tag,isEnd,count,msg,tk,True)
+           # resetCount(conn,line_bot_api, tk, user_id, count)
+        #print(f'isEnd2:{isEnd}')
+        #if isEnd:
+         #   phase = True
+          #  update_user_progress(conn, user_id, node_id, day_step, node_step, question_tag,isEnd,count,msg,tk,phase)
         #if count > 3:
             #phase = False
            # update_count(conn,line_bot_api, tk, user_id, count)
@@ -1285,6 +1298,11 @@ def update_user_progress(conn, user_id, node_id, day_step, node_step, question_t
             WHERE a.step = 1
             RETURN id(a) AS node_id
         '''
+    query3 = f'''
+        MATCH (a:user)
+        WHERE a.userID = $user_id
+        SET a.dayStep = 0, a.nodeID = 634
+    '''
   #  if (isEnd and count >= 3) or msg == "Yes":
  #       day_step = day_step + 1
 #        node_step = 1
@@ -1295,11 +1313,15 @@ def update_user_progress(conn, user_id, node_id, day_step, node_step, question_t
     if phase == True:
         with conn._driver.session() as session:
             print(f"node label is {node_label}")
-            result = session.run(query2, parameters={'node_label': node_label})
-            record = result.single()  # Fetch the single record from the result
-            node_id = record["node_id"] if record else None
-        if node_id != None:
-            conn.query(query1, parameters={'user_id': user_id, 'day_step': day_step, 'node_id': node_id, 'node_step': node_step})
+            if day_step < 4:
+                result = session.run(query2, parameters={'node_label': node_label})
+                record = result.single()  # Fetch the single record from the result
+                node_id = record["node_id"] if record else None
+                if node_id != None:
+                    conn.query(query1, parameters={'user_id': user_id, 'day_step': day_step, 'node_id': node_id, 'node_step': node_step})
+            else:
+                day_step = 0
+                result = session.run(query3, parameters={'user_id':user_id})
 
     #else:
      #   conn.query(query2, parameters={'user_id': user_id, 'day_step': day_step, 'node_id': node_id, 'node_step': node_step,'msg':msg})
@@ -1364,12 +1386,62 @@ def check_is_correct(conn,  node_id, msg):
         return record["isCorrect"] if record else None
 
 
-def send_node_info(line_bot_api, tk, conn, node_id, node_step, day_step,user_id):
-    entity_data = fetch_entity_data(conn, node_id, node_step,user_id)
+def send_node_info(line_bot_api, tk, conn, node_id, node_step, day_step,user_id,isEnd):
+    if not isEnd:
+        entity_data = fetch_entity_data(conn, node_id, node_step,user_id)
+    else:
+        entity_data = fetch_merge_entity_data(conn, node_id, node_step,user_id,day_step)
     if entity_data:
         entity_data = replace_text_with_variable(conn,user_id,entity_data)
-        send_messages(line_bot_api, tk, entity_data)
+        if not isEnd:
+            send_messages(line_bot_api, tk, entity_data)
+        else:
+            send_merge_messages(line_bot_api, tk, entity_data)
+
+
+
+
+    #  entity_data = fetch_entity_data(conn, node_id, node_step,user_id)
+   # if entity_data:
+    #    entity_data = replace_text_with_variable(conn,user_id,entity_data)
+     #   send_messages(line_bot_api, tk, entity_data)
          
+def fetch_merge_entity_data(conn, node_id, node_step,user_id,day_step):
+    day_step = day_step + 1 
+    node_label = f"d{day_step}"
+    query = f'''
+        MATCH (n),(a:{node_label})-[r:NEXT]->(b)
+        WHERE id(n) = $node_id and a.step = 1
+        RETURN n.name as name, n.photo as photo,a.name as name2,a.photo as photo2,r.name as quickreply,r.choice as choice
+    '''
+    query2 = f'''
+        MATCH (n),(a)
+        WHERE id(n) = 634 and id(a) = $node_id
+        RETURN a.name as name, a.photo as photo,n.name as name2,n.photo as photo2,n.name2 as name3
+    '''
+    entity = {"name": None, "name2": None, "photo": None,"name3":None,"photo2": None,"quickreply":None, "choices": []}
+
+    with conn._driver.session() as session:
+        if day_step < 4:
+            result = session.run(query, parameters={'node_id': node_id})
+        else:
+            result = session.run(query2, parameters={'node_id': node_id})
+        records = list(result)
+        if not records:
+            print(f"No records found for node_id: {node_id}")
+            return None
+        for record in records:
+            entity["name"] = record.get("name", entity["name"]).strip() if record.get("name") else entity["name"]
+            entity["name2"] = record.get("name2", entity["name2"]).strip() if record.get("name2") else entity["name2"]
+            entity["name3"] = record.get("name3", entity["name3"]).strip() if record.get("name3") else entity["name3"]
+            entity["photo"] = record.get("photo", entity["photo"]).strip() if record.get("photo") else entity["photo"]
+            entity["photo2"] = record.get("photo2", entity["photo2"]).strip() if record.get("photo2") else entity["photo2"]
+            if record.get("quickreply") is not None:
+                entity["quickreply"] = record.get("quickreply", entity["quickreply"]).strip()
+            if record.get("choice") is not None:
+                entity["choices"].append(record["choice"])
+            return entity if any(value is not None for value in entity.values()) else None
+
 
 def fetch_entity_data(conn, node_id, node_step,user_id):
     query = '''
@@ -1444,6 +1516,31 @@ def replace_text_with_variable(conn,user_id,entity_data):
                     print(f"No value found for {match}, skipping replacement.")
  
     return entity_data
+
+def send_merge_messages(line_bot_api, tk, entity_data):
+    messages = []
+    if entity_data["name"]:
+        messages.append(TextSendMessage(text=entity_data["name"]))
+    if entity_data["photo"]:
+        messages.append(ImageSendMessage(original_content_url=entity_data["photo"], preview_image_url=entity_data["photo"]))
+    if entity_data["name2"]:
+        messages.append(TextSendMessage(text=entity_data["name2"]))
+    if entity_data["name3"]:
+        messages.append(TextSendMessage(text=entity_data["name3"]))
+    if entity_data["photo2"]:
+        messages.append(ImageSendMessage(original_content_url=entity_data["photo2"], preview_image_url=entity_data["photo2"]))
+    if entity_data["quickreply"] is not None:
+        quick_reply_buttons = [QuickReplyButton(action=MessageAction(label=c, text=c)) for c in entity_data["choices"]
+        if c.strip()]
+        if quick_reply_buttons:
+            quick_reply = QuickReply(items=quick_reply_buttons)
+            messages.append(TextSendMessage(text=entity_data["quickreply"], quick_reply=quick_reply))
+    if messages:
+
+        line_bot_api.reply_message(tk, messages)
+    else:
+        print("No valid messages to send2222")
+
 
 def send_messages(line_bot_api, tk, entity_data):
     print(entity_data["video"])
