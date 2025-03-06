@@ -92,6 +92,42 @@ CACHE_FILE = "cached_data.json"
               #  messages=[TextMessage(text=event.message.text)]
             #)
        # )
+carousel_data = {
+    1: [  # ✅ ข้อที่ 1 มี 3 ภาพ พร้อมข้อความตอบกลับ
+        {"image_url": "https://drive.google.com/uc?export=view&id=1job8DnIdyX_090eR2MS8gNHsvgnV76L4","label":"ใช่" ,"text": "ใช่"},
+        {"image_url": "https://drive.google.com/uc?export=view&id=1miIfR_GIQVRkNPqBCvgKhX98huzavgq8","label":"ใช่" ,"text": "ใช่"},
+        {"image_url": "https://drive.google.com/uc?export=view&id=1DwywrPv27dtTDAGhTd2a2wPWKZ6SAzAb","label":"ไม่ใช่" ,"text": "ไม่ใช่"}
+    ],
+    2: [  # ✅ ข้อที่ 2 มี 2 ภาพ พร้อมข้อความตอบกลับ
+        {"image_url": "https://drive.google.com/uc?export=view&id=1ELrAyLmQajhH1o_upkQhjJMseO5ioi6M", "label":"ใช่","text": "ใช่"},
+        {"image_url": "https://drive.google.com/uc?export=view&id=1Ug3nmk5EOgnSQiL_fSvNPBtt4Jbwd9Fc", "label":"ใช่","text": "ใช่"},
+        {"image_url": "https://drive.google.com/uc?export=view&id=10UFJUDCJewih1N3F9hLGcyqjfW11wU8O", "label":"ไม่ใช่","text": "ไม่ใช่"}
+    ],
+     3: [  # ✅ ข้อที่ 2 มี 2 ภาพ พร้อมข้อความตอบกลับ
+         {"image_url": "https://drive.google.com/uc?export=view&id=1BSncdOg4b4EuJ_RSxZDyAH8v4TauNhBW", "label" : "ใช่" , "text" : "ใช่"},
+        {"image_url": "https://drive.google.com/uc?export=view&id=1ntBAXBuH5OseyVYvVDKiZFgr4S2B6geV", "label":"ไม่ใช่","text": "ไม่ใช่"}
+    ],
+     4: [  # ✅ ข้อที่ 2 มี 2 ภาพ พร้อมข้อความตอบกลับ
+        {"image_url": "https://drive.google.com/uc?export=view&id=1NJinUCFExDDF_9Dl2ZauH4vZaUIpwczs", "label":"ใช่","text": "ใช่"},
+        {"image_url": "https://drive.google.com/uc?export=view&id=1KzTGiHkY0xHhwfRFp6amWqg96JGU8FnV", "label":"ไม่ใช่","text": "ไม่ใช่"}
+    ],
+     5: [  # ✅ ข้อที่ 2 มี 2 ภาพ พร้อมข้อความตอบกลับ
+        {"image_url": "https://drive.google.com/uc?export=view&id=1h9eaIZbRFFkDrSSRqbHI81yX2sSMlFdl", "label":"ใช่","text": "ใช่"},
+         {"image_url": "https://drive.google.com/uc?export=view&id=1NgsODwZvBUlwC7hEO9WKwJH33dxLg6EH", "label":"ไม่ถึง1ปี" , ""  "text" : "ไม่ใช่" },
+        {"image_url": "https://drive.google.com/uc?export=view&id=19r7-hh9Gx41euZ4Lh_zJOj8pXQvPRA2C", "label":"ไม่ใช่","text": "ไม่ใช่"}
+    ],
+     6: [  # ✅ ข้อที่ 2 มี 2 ภาพ พร้อมข้อความตอบกลับ
+        {"image_url": "https://drive.google.com/uc?export=view&id=1BD3OxHSOGJ_V2hwCj6z-RnoPQbrtsd9J", "label":"ใช่","text": "ใช่"},
+        {"image_url": "https://drive.google.com/uc?export=view&id=1jY8EtS_SnRQyVgjAdenFUL0GiD9ktsx8", "label":"ไม่ใช่","text": "ไม่ใช่"}
+    ],
+     7: [  # ✅ ข้อที่ 2 มี 2 ภาพ พร้อมข้อความตอบกลับ
+        {"image_url": "https://drive.google.com/uc?export=view&id=10XmzxuJpXIzJBUhUKRyNsnlvynPaKm3g", "label":"ใช่","text": "ใช่"},
+         {"image_url": "https://drive.google.com/uc?export=view&id=1RWwSCLYIUKucpYUzUVSVSl1XaQS5PLmb", "label":"ฟันไม่ขึ้น" , "text" : "ไม่ใช่" },
+        {"image_url": "https://drive.google.com/uc?export=view&id=1AzYLGZVscPCMQMH5JjWLHOcrhLxKoTci", "label":"ไม่ใช่","text": "ไม่ใช่"}
+    ]
+}
+
+
 
 
 def fetch_questions_from_neo4j():
@@ -574,9 +610,13 @@ def display_node(line_bot_api, tk, user_id, msg):
         node_image = fetch_node_image(conn, node_id)
         question_tag = fetch_question_rel(conn, node_id)
         print(f"questiontag is {question_tag}")
-        final_score = fetch_show_score_rel(conn,user_id, node_id, question_tag,day_step)
+        if day_step != 0:
+            final_score = fetch_show_score_rel(conn,user_id, node_id, question_tag,day_step)
+        else:
+            final_score = fetch_show_quiz_score(conn, user_id,node_id)
         showAnswer = False 
         wrongAnswers = fetch_answer(conn,user_id, node_id,question_tag,day_step)
+        quiz_number = fetch_quiz(conn, node_id)
        # isEnd = False
        # phase = False i
 
@@ -599,6 +639,8 @@ def display_node(line_bot_api, tk, user_id, msg):
         isFetch = check_Is_Fetch(line_bot_api, tk, conn, user_id)
         update_confirm(line_bot_api,  conn, user_id, msg)
         isConfirm = read_confirm(line_bot_api,  conn, user_id)
+        
+        quiz_number = fetch_quiz(conn, node_id)
         print(f'isConfirm: {isConfirm}')
 #        if isConfirm == True and isFetch == True:
  #           resetCount(conn,line_bot_api, tk, user_id, count)
@@ -609,11 +651,15 @@ def display_node(line_bot_api, tk, user_id, msg):
       #      updateFetchNext(line_bot_api,  conn, user_id,False)
        #     updateCheckConfirm(line_bot_api, tk, conn, user_id)
            # fetch_next_day(conn, user_id,False)
-        if day_step == 0:
-            return_message(line_bot_api, tk, user_id, msg)
-            return 0
+       # if day_step == 0:
+           # return_message(line_bot_api, tk, user_id, msg)
+            #return 0
         if msg != "Hello" and phase == False :
             updateisFetch(line_bot_api, tk, conn, user_id,count)
+            update_quiz_score(conn,user_id,node_id,msg)
+            if node_id == 832:
+                return_message(line_bot_api, tk, user_id, msg)
+                return 0
             if node_var:
                 update_user_variable(conn,user_id,node_var,msg)
             if node_rel_var:
@@ -623,7 +669,7 @@ def display_node(line_bot_api, tk, user_id, msg):
                 manage_image(conn,tk,user_id,message_id)
                 #update_user_image(conn,user_id, image_url)
                 
-            if question_tag:
+            if question_tag and day_step != 0:
                 update_user_score(conn,user_id, node_id, msg, question_tag)
                 
             print(f"""showAnser is {showAnswer}""")
@@ -635,7 +681,7 @@ def display_node(line_bot_api, tk, user_id, msg):
                 #isEnd = check_end_node(conn, node_id)
                 node_id = fetch_next_node(tk,conn, node_id, msg,day_step,user_id) or node_id
         isEnd = check_end_node(conn, node_id)
-
+        quiz_number = fetch_quiz(conn, node_id)
         isAnswerRel = fetch_answer_rel(conn, node_id)
         update_user_progress(conn, user_id, node_id, day_step, node_step, question_tag,isEnd,count,msg,tk,phase)
         
@@ -643,7 +689,10 @@ def display_node(line_bot_api, tk, user_id, msg):
         #if showAnswer == False:
         if phase == False:
             if not isEnd:
-                send_node_info(line_bot_api, tk, conn, node_id, node_step, day_step,user_id,isEnd)
+                if not quiz_number:
+                    send_node_info(line_bot_api, tk, conn, node_id, node_step, day_step,user_id,isEnd)
+                else:
+                    send_quiz_info(line_bot_api, tk, conn, node_id,user_id,quiz_number)
             else:
                 send_node_info(line_bot_api, tk, conn, node_id, node_step, day_step,user_id,isEnd)
                 update_user_progress(conn, user_id, node_id, day_step, node_step, question_tag,isEnd,count,msg,tk,True)
@@ -701,6 +750,141 @@ def display_node(line_bot_api, tk, user_id, msg):
         
     else:
         print("No node data found")
+
+
+def fetch_show_quiz_score(conn, user_id,node_id):
+    query = f'''
+        MATCH (n:user)
+        WHERE n.userID = $user_id
+        RETURN n.quizScore as quiz_score
+    '''
+    with conn._driver.session() as session:
+        result = session.run(query, parameters={'user_id': user_id})
+        score_record = result.single()
+    score = score_record["quiz_score"] if score_record else None
+    if score is not None:
+        query = f'''
+            MATCH (a)-[r:SCORE]->(b)
+            WHERE id(a) = $current_node_id AND r.score = $score
+            RETURN id(b) as node_id
+        '''
+        with conn._driver.session() as session:
+            result = session.run(query, parameters={'current_node_id':node_id, 'score': score})
+            record = result.single()
+            return record["node_id"] if record else False
+    else:
+        return Fals
+
+
+
+def check_is_quiz_correct(conn, node_id, msg):
+    query = f'''
+        MATCH (a)-[r:NEXT]->(b)
+        WHERE id(a) = $node_id AND r.choice = $msg
+        RETURN r.isCorrect AS isCorrect
+    '''
+    with conn._driver.session() as session:
+        result = session.run(query, parameters={'node_id': node_id, 'msg': msg})
+        record = result.single()
+        return record["isCorrect"] if record else None
+
+
+def update_quiz_score(conn,user_id,node_id,msg):
+    quiz_score = fetch_quiz_score(conn,node_id,msg)
+    query = f'''
+        MATCH (n:user)
+        WHERE n.userID = $user_id
+        SET n.quizScore = coalesce(n.quizScore, 0) + $quiz_score
+    '''
+    query2 = f'''
+        MATCH (n:user)
+        WHERE n.userID = $user_id
+        SET n.quizScore = coalesce(n.quizScore, 0) + 0
+    '''
+    print(f'QUIZ_MSG={msg}')
+    isCorrect = check_is_quiz_correct(conn, node_id, msg)
+    if isCorrect:
+        conn.query(query, parameters={'user_id': user_id,'quiz_score':quiz_score})
+    else:
+        conn.query(query2, parameters={'user_id': user_id})
+
+def fetch_quiz_score(conn,node_id,msg):
+    query = f'''
+        MATCH (a)-[r:NEXT]->(b)
+        WHERE id(a) = $node_id AND r.choice = $msg
+        RETURN r.score AS quiz_score
+    '''
+    with conn._driver.session() as session:
+        result = session.run(query, parameters={'node_id': node_id, 'msg': msg})
+        record = result.single()
+        return record["quiz_score"] if record else 0
+
+
+def set_quiz_id(conn,user_id):
+    query= f'''
+        MATCH (a:user)
+        WHERE a.userID = $user_id
+        SET a.dayStep = 0, a.nodeID = 615
+    '''
+    with conn._driver.session() as session:
+        result = session.run(query3, parameters={'user_id':user_id})
+
+
+def fetch_quiz(conn, node_id):
+    query = '''
+        MATCH (a)-[r:NEXT]->(b)
+        WHERE id(a) = $node_id
+        RETURN a.quiz_number AS quiz_number
+    '''
+    with conn._driver.session() as session:
+        result = session.run(query, parameters={'node_id': node_id})
+        record = result.single()
+        return record["quiz_number"] if record else None
+
+
+def send_quiz_info(line_bot_api, tk, conn, node_id,user_id,quiz_number):
+    node_step = 0
+    entity_data = fetch_entity_data(conn, node_id, node_step,user_id)
+    if entity_data:
+        entity_data = replace_text_with_variable(conn,user_id,entity_data)
+        send_quiz(line_bot_api, tk, entity_data,quiz_number,user_id)
+
+
+def send_quiz(line_bot_api, tk, entity_data,quiz_number,user_id):
+    messages = []
+    if entity_data["name"]:                                                            messages.append(TextSendMessage(text=entity_data["name"]))
+    if entity_data["name2"]:
+        messages.append(TextSendMessage(text=entity_data["name2"]))
+    if entity_data["photo"]:                                                           messages.append(ImageSendMessage(original_content_url=entity_data["photo"], preview_image_url=entity_data["photo"]))
+    if messages:
+        #line_bot_api.reply_message(tk, messages)
+        send_image_carousel(user_id,tk,quiz_number,messages)
+    else:
+        print("No valid messages to send2222")
+
+def send_image_carousel(user_id,tk,quiz_number,messages):
+    print(f"✅✅✅✅✅Quiz_number:{quiz_number}✅✅✅✅")
+    images = carousel_data.get(quiz_number, [])
+    if not images:
+        print(f"❌ No images found for question question_number")
+        return
+    carousel_template = TemplateSendMessage(
+        alt_text=f"this is a image carousel template.",
+        template=ImageCarouselTemplate(columns=[
+            ImageCarouselColumn(
+                image_url=item["image_url"],
+                action=MessageTemplateAction(
+                    label=item["label"],
+                    text=item["text"]  # ✅ ใช้ข้อความที่กำหนดไว้ใน `carousel_data`
+                )
+            ) for item in images
+        ])
+    )
+    messages.append(carousel_template)
+    line_bot_api.reply_message(tk, messages)
+    #line_bot_api.push_message(user_id, carousel_template)
+    print(f"✅ Image Carousel for question sent successfully!")
+
 
 def read_confirm(line_bot_api,  conn, user_id):
     query = f"""
@@ -1415,9 +1599,10 @@ def fetch_merge_entity_data(conn, node_id, node_step,user_id,day_step):
         RETURN n.name as name, n.photo as photo,a.name as name2,a.photo as photo2,r.name as quickreply,r.choice as choice
     '''
     query2 = f'''
-        MATCH (n),(a)
+        MATCH (n)-[r:NEXT]->(m),(a)
         WHERE id(n) = 634 and id(a) = $node_id
-        RETURN a.name as name, a.photo as photo,n.name as name2,n.photo as photo2,n.name2 as name3
+        RETURN a.name as name, a.photo as photo,n.name as name2,n.photo as photo2,n.name2 as name3,r.name as quickreply,r.choice as choice
+        
     '''
     entity = {"name": None, "name2": None, "photo": None,"name3":None,"photo2": None,"quickreply":None, "choices": []}
 
@@ -1440,7 +1625,7 @@ def fetch_merge_entity_data(conn, node_id, node_step,user_id,day_step):
                 entity["quickreply"] = record.get("quickreply", entity["quickreply"]).strip()
             if record.get("choice") is not None:
                 entity["choices"].append(record["choice"])
-            return entity if any(value is not None for value in entity.values()) else None
+        return entity if any(value is not None for value in entity.values()) else None
 
 
 def fetch_entity_data(conn, node_id, node_step,user_id):
