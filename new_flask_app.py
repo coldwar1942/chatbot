@@ -276,7 +276,14 @@ def push_line_message(conn,user_id, message_text,line_bot_api):
      #   fetch_next_day(conn,user_id)
     node_data = fetch_user_node_data(conn, user_id)
     if node_data:
+        isEnd = check_end_node(conn, node_id)
+        
+        if isEnd:
+            update_user_progress(conn, user_id, node_id, day_step, phase)
+            node_data = fetch_user_node_data(conn, user_id)
+        
         node_id, day_step, node_step = node_data['nodeID'], node_data['dayStep'], node_data['nodeStep']
+        
         entity_data = fetch_entity_data(conn, node_id, node_step,user_id)
     messages = []
     print(entity_data)
@@ -612,7 +619,7 @@ def display_node(line_bot_api, tk, user_id, msg):
        # phase = False i
 
         phase = checkPhase(line_bot_api, conn, user_id)
-        count = checkCount(line_bot_api, tk, conn, user_id)
+        count = checkCount(conn, user_id)
         isEnd = check_end_node(conn, node_id)
      #   print(f"count is {count}")
        # if count == 3 or msg == "Yes":
@@ -635,12 +642,12 @@ def display_node(line_bot_api, tk, user_id, msg):
             resetCount(conn,line_bot_api, tk, user_id, count)
             update_phase(line_bot_api, tk, conn, user_id,count,isConfirm)
             phase = checkPhase(line_bot_api, conn, user_id)
-            count = checkCount(line_bot_api, tk, conn, user_id)
+            count = checkCount(conn, user_id)
             updateCheckConfirm(line_bot_api,  conn, user_id,False)
             updateFetchNext(line_bot_api,  conn, user_id,False)
        #     updateCheckConfirm(line_bot_api, tk, conn, user_id)
            # fetch_next_day(conn, user_id,False)
-        if msg != "Hello" and phase == False and isConfirm == False:
+        if msg != "Hello" and phase == False :
             updateisFetch(line_bot_api, tk, conn, user_id,count)
             if node_var:
                 update_user_variable(conn,user_id,node_var,msg)
@@ -661,11 +668,12 @@ def display_node(line_bot_api, tk, user_id, msg):
                 node_id = showAnswer
             else:
                 #isEnd = check_end_node(conn, node_id)
-                node_id = fetch_next_node(tk,conn, node_id, msg,day_step,user_id) or node_id
+                node_id = fetch_next_node(conn, node_id, msg,day_step,user_id) or node_id
         isEnd = check_end_node(conn, node_id)
 
         isAnswerRel = fetch_answer_rel(conn, node_id)
-        update_user_progress(conn, user_id, node_id, day_step, node_step, question_tag,isEnd,count,msg,tk,phase)
+        update_user_progress(conn, user_id, node_id, day_step, phase)
+        #update_user_progress(conn, user_id, node_id, day_step, node_step, question_tag,isEnd,count,msg,tk,phase)
         
 
         #if showAnswer == False:
@@ -675,7 +683,8 @@ def display_node(line_bot_api, tk, user_id, msg):
         #print(f'isEnd2:{isEnd}')
         if isEnd:
             phase = True
-            update_user_progress(conn, user_id, node_id, day_step, node_step, question_tag,isEnd,count,msg,tk,phase)
+            update_user_progress(conn, user_id, node_id, day_step, phase)
+           # update_user_progress(conn, user_id, node_id, day_step, node_step, question_tag,isEnd,count,msg,tk,phase)
             update_phase(line_bot_api, conn, user_id,0,False)
         #if count > 3:
             #phase = False
@@ -914,7 +923,7 @@ def update_count(conn,line_bot_api, tk, user_id, count):
         WHERE n.userID = $user_id
         SET n.questionCount = $count
     """
-    count = checkCount(line_bot_api, tk, conn, user_id)
+    count = checkCount(conn, user_id)
     if count < 10:
         count = count + 1
     else:
@@ -922,7 +931,7 @@ def update_count(conn,line_bot_api, tk, user_id, count):
     conn.query(query, parameters={'user_id': user_id, 'count': count})
 
 
-def checkCount(line_bot_api, tk, conn, user_id):
+def checkCount(conn, user_id):
     query = f"""
         MATCH (n:user)
         WHERE n.userID = $user_id
@@ -1229,9 +1238,9 @@ def fetch_answer(conn, user_id,node_id,question_tag,day_step):
         wrong_answers_record = result.single()
         return wrong_answers_record["wrong"] if wrong_answers_record else False
 
-def fetch_next_node(tk,conn, current_node_id, msg, day_step,user_id):
+def fetch_next_node(conn, current_node_id, msg, day_step,user_id):
     isEnd = check_end_node(conn, current_node_id)
-    count = checkCount(line_bot_api, tk, conn, user_id) 
+    count = checkCount(line_bot_api, conn, user_id) 
     phase = checkPhase(line_bot_api, conn, user_id)
     if phase == False:
         node_label = f"d{day_step}"
@@ -1300,9 +1309,10 @@ def fetch_show_score_rel(conn, user_id,current_node_id, question_tag,day_step):
     else:
         return False
 
-def update_user_progress(conn, user_id, node_id, day_step, node_step, question_tag,isEnd,count,msg,tk,phase):
+def update_user_progress(conn, user_id, node_id, day_step, phase):
+#def update_user_progress(conn, user_id, node_id, day_step, node_step, question_tag,isEnd,count,msg,tk,phase):
     isEnd = check_end_node(conn, node_id)
-    count = checkCount(line_bot_api, tk, conn, user_id)
+    count = checkCount(conn, user_id)
     #dayScore = f"{question_tag}Score"
     print(isEnd)
     #phase = False
