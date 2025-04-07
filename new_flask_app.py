@@ -275,6 +275,9 @@ def push_line_message(conn,user_id, message_text,line_bot_api):
  #   if isConfirm == True:
      #   fetch_next_day(conn,user_id)
     node_data = fetch_user_node_data(conn, user_id)
+    node_id = node_data['nodeID']
+    day_step = node_data['dayStep']
+    phase = True
     if node_data:
         isEnd = check_end_node(conn, node_id)
         
@@ -638,13 +641,13 @@ def display_node(line_bot_api, tk, user_id, msg):
         update_confirm(line_bot_api,  conn, user_id, msg)
         isConfirm = read_confirm(line_bot_api,  conn, user_id)
       #  print(f'isConfirm: {isConfirm}')
-        if isConfirm == True and isFetch == True:
-            resetCount(conn,line_bot_api, tk, user_id, count)
-            update_phase(line_bot_api, tk, conn, user_id,count,isConfirm)
-            phase = checkPhase(line_bot_api, conn, user_id)
-            count = checkCount(conn, user_id)
-            updateCheckConfirm(line_bot_api,  conn, user_id,False)
-            updateFetchNext(line_bot_api,  conn, user_id,False)
+       # if isConfirm == True and isFetch == True:
+        #    resetCount(conn,line_bot_api, tk, user_id, count)
+         #   update_phase(line_bot_api, tk, conn, user_id,count,isConfirm)
+           # phase = checkPhase(line_bot_api, conn, user_id)
+           # count = checkCount(conn, user_id)
+           # updateCheckConfirm(line_bot_api,  conn, user_id,False)
+           # updateFetchNext(line_bot_api,  conn, user_id,False)
        #     updateCheckConfirm(line_bot_api, tk, conn, user_id)
            # fetch_next_day(conn, user_id,False)
         if msg != "Hello" and phase == False :
@@ -1240,7 +1243,7 @@ def fetch_answer(conn, user_id,node_id,question_tag,day_step):
 
 def fetch_next_node(conn, current_node_id, msg, day_step,user_id):
     isEnd = check_end_node(conn, current_node_id)
-    count = checkCount(line_bot_api, conn, user_id) 
+    count = checkCount( conn, user_id) 
     phase = checkPhase(line_bot_api, conn, user_id)
     if phase == False:
         node_label = f"d{day_step}"
@@ -1338,7 +1341,7 @@ def update_user_progress(conn, user_id, node_id, day_step, phase):
 #        node_step = 1
         
     if phase == False:
-      
+        node_step = 1
         conn.query(query1, parameters={'user_id': user_id, 'day_step': day_step, 'node_id': node_id, 'node_step': node_step})
     if phase == True:
         with conn._driver.session() as session:
