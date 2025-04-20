@@ -43,20 +43,24 @@ from langchain.memory import ConversationBufferMemory
 from langchain.chains import LLMChain
 from langchain.llms import Ollama
 import os
+from dotenv import load_dotenv
 app = Flask(__name__)
 
-uri = "neo4j:172.30.81.113:7687"
-user = "neo4j"
-password= "password"
-line_bot_api = LineBotApi('odz7P1Pu4YPBKfC2UaRJGzhP671gKFSR7DWrCKkBLCZaMUL4vRs62JDF9sfliaulr3C18QMazzHCXAZPBofFrBjs3schUsCWY9LoIbz0AH3PmGYb0COtKTDDwfqtlgJJ7W3mCN4YnYRwr41BTq6sKgdB04t89/1O/w1cDnyilFU=')
-configuration = Configuration(access_token='odz7P1Pu4YPBKfC2UaRJGzhP671gKFSR7DWrCKkBLCZaMUL4vRs62JDF9sfliaulr3C18QMazzHCXAZPBofFrBjs3schUsCWY9LoIbz0AH3PmGYb0COtKTDDwfqtlgJJ7W3mCN4YnYRwr41BTq6sKgdB04t89/1O/w1cDnyilFU=')
-handler = WebhookHandler('29e4dc7397d37e92d3a17cf5f459364b')
+load_dotenv()
+
+CHANNEL_ACCESS_TOKEN = os.getenv("LINE_CHANNEL_ACCESS_TOKEN")
+CHANNEL_SECRET = os.getenv("LINE_CHANNEL_SECRET")
+NEO4J_URI = os.getenv("NEO4J_URI")
+NEO4J_USER = os.getenv("NEO4J_USER")
+NEO4J_PASSWORD = os.getenv("NEO4J_PASSWORD")
+line_bot_api = LineBotApi(CHANNEL_ACCESS_TOKEN)
+configuration = Configuration(access_token=CHANNEL_ACCESS_TOKEN)
+handler = WebhookHandler(CHANNEL_SECRET)
 
 driver = GraphDatabase.driver(
-        "neo4j://172.30.81.113:7687",
-        auth=basic_auth("neo4j", "password"))
+    NEO4J_URI,
+        auth=basic_auth(NEO4J_USER, NEO4J_PASSWORD))
 
-CHANNEL_ACCESS_TOKEN = 'odz7P1Pu4YPBKfC2UaRJGzhP671gKFSR7DWrCKkBLCZaMUL4vRs62JDF9sfliaulr3C18QMazzHCXAZPBofFrBjs3schUsCWY9LoIbz0AH3PmGYb0COtKTDDwfqtlgJJ7W3mCN4YnYRwr41BTq6sKgdB04t89/1O/w1cDnyilFU='
 
 CACHE_FILE = "cached_data.json"
 #@app.route("/callback", methods=['POST'])
@@ -96,7 +100,7 @@ def fetch_questions_from_neo4j():
         RETURN n.answer AS answer,n.pic AS pic, m
         """
     results = []
-    conn = Neo4jConnection(uri, user, password)
+    conn = Neo4jConnection(NEO4J_URI, NEO4J_USER, NEO4J_PASSWORD)
     """with conn._driver.session() as session:
         result = session.run(query)
         for record in result:
@@ -361,7 +365,7 @@ flex_content = {
 
 @app.route('/push_message_with_id', methods=['POST'])
 def push_message_with_id():
-    conn = Neo4jConnection(uri, user, password)
+    conn = Neo4jConnection(NEO4J_URI, NEO4J_USER, NEO4J_PASSWORD)
     data = request.get_json()
     user_id = data.get('user_id')
     #msg = "ไม่ใช่"
@@ -413,10 +417,6 @@ def linebot():
     body = request.get_data(as_text=True)
     try:
         json_data = json.loads(body)
-        access_token = 'odz7P1Pu4YPBKfC2UaRJGzhP671gKFSR7DWrCKkBLCZaMUL4vRs62JDF9sfliaulr3C18QMazzHCXAZPBofFrBjs3schUsCWY9LoIbz0AH3PmGYb0COtKTDDwfqtlgJJ7W3mCN4YnYRwr41BTq6sKgdB04t89/1O/w1cDnyilFU='
-        secret = '29e4dc7397d37e92d3a17cf5f459364b'
-        line_bot_api = LineBotApi(access_token)
-        handler = WebhookHandler(secret)
         signature = request.headers['X-Line-Signature']
         handler.handle(body, signature)
         msg_type = json_data['events'][0]['message']['type']
@@ -555,9 +555,7 @@ def reply_msg(line_bot_api,tk,user_id,msg):
 
 def check_user_id(line_bot_api,tk,user_id,msg):
     #if (msg == "Hello"):
-        #return_message(line_bot_api,tk,user_id,msg)
-    driver = GraphDatabase.driver("bolt://localhost:7687", auth=("neo4j", "password"))
-    conn = Neo4jConnection(uri, user, password)
+    conn = Neo4jConnection(NEO4J_URI, NEO4J_USER, NEO4J_PASSWORD)
     #getDisplayName(conn, user_id)
     node_label = "user"
     property_name = "userID"
@@ -604,7 +602,7 @@ def display_node(line_bot_api, tk, user_id, msg):
     description = "This is a description of the video."
 
     
-    conn = Neo4jConnection(uri, user, password)
+    conn = Neo4jConnection(NEO4J_URI, NEO4J_USER,  NEO4J_PASSWORD)
      
     node_data = fetch_user_node_data(conn, user_id)
      
